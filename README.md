@@ -3,6 +3,7 @@
 IRC bot written in Go.
 
 ## Core Features (in no particular order):
+- Uses Justfile for build management
 - SSL TLS support
 - SASL AUTH for NickServ and such
 - Bot owner and admins based on hostmask like: nick!~user@host.name
