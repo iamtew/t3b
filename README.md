@@ -35,6 +35,8 @@ cp t3b.conf.example t3b.conf   # edit server, nick, hostmasks, channels
 just run                       # foreground
 ```
 
+`just build` stamps the binary version from git: short commit hash, or `tag-shorthash` when HEAD is exactly on a tag (append `-dirty` if the tree is dirty). Check with `t3b -version`. `just run` / plain `go build` fall back to the embedded VCS hash when present.
+
 Useful recipes: `just test`, `just fmt`, `just tidy`, `just clean`.
 
 Cross-build amd64 binaries from any host (including Windows) into `bin/`:

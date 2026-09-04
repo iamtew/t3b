@@ -17,6 +17,7 @@ import (
 	"github.com/iamtew/t3b/internal/commands"
 	"github.com/iamtew/t3b/internal/config"
 	"github.com/iamtew/t3b/internal/resolve"
+	"github.com/iamtew/t3b/internal/version"
 	"github.com/lrstanley/girc"
 )
 
@@ -135,8 +136,8 @@ func (b *Bot) runSession(ctx context.Context) error {
 		User:   cfg.Identity.User,
 		Name:   cfg.Identity.Realname,
 		SSL:    cfg.Server.TLS,
-		// CTCP VERSION reply — not the default girc / Go runtime string.
-		Version: "t3b (github.com/iamtew/t3b)",
+		// CTCP VERSION reply — stamped build id, not girc / Go runtime.
+		Version: version.CTCP(),
 	}
 	if cfg.Server.TLS && cfg.Server.TLSSkipVerify {
 		// Lab nets only — Meat Bags should keep this false on real networks.

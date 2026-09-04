@@ -41,7 +41,8 @@ pid_path = ""
 url_titles = true
 twitter = true
 youtube = true
-user_agent = "t3b/0.1 (+https://github.com/iamtew/t3b)"
+# Omit user_agent to use the binary build version (t3b/<hash or tag-hash>).
+# user_agent = "t3b/custom (+https://example.com)"
 http_timeout_sec = 8
 
 [automode]

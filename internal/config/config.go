@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/iamtew/t3b/internal/version"
 )
 
 const DefaultPath = "t3b.conf"
@@ -95,7 +96,7 @@ func Load(path string) (*Config, error) {
 // applyDefaults fills empty optional fields so Meat Bags can omit them.
 func (c *Config) applyDefaults() {
 	if c.Resolve.UserAgent == "" {
-		c.Resolve.UserAgent = "t3b/0.1 (+https://github.com/iamtew/t3b)"
+		c.Resolve.UserAgent = version.UserAgent()
 	}
 	if c.Resolve.HTTPTimeoutSec <= 0 {
 		c.Resolve.HTTPTimeoutSec = 8

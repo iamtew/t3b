@@ -13,6 +13,7 @@ import (
 	"github.com/iamtew/t3b/internal/bot"
 	"github.com/iamtew/t3b/internal/config"
 	"github.com/iamtew/t3b/internal/daemon"
+	"github.com/iamtew/t3b/internal/version"
 )
 
 func main() {
@@ -24,8 +25,13 @@ func run(args []string) int {
 	fs.SetOutput(os.Stderr)
 	configPath := fs.String("config", config.DefaultPath, "path to TOML config (default: $PWD/t3b.conf)")
 	daemonMode := fs.Bool("daemon", false, "run in background")
+	showVersion := fs.Bool("version", false, "print build version and exit")
 	if err := fs.Parse(args); err != nil {
 		return 2
+	}
+	if *showVersion {
+		fmt.Println(version.String())
+		return 0
 	}
 
 	rest := fs.Args()
