@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -101,6 +102,59 @@ enabled = false
 	}
 	if cfg.Automode.AutomodeOn() {
 		t.Fatal("expected automode off")
+	}
+}
+
+func TestDiscover(t *testing.T) {
+	dir := t.TempDir()
+
+	if _, err := Discover(dir); !errors.Is(err, ErrNoConfig) {
+		t.Fatalf("empty dir: got %v, want ErrNoConfig", err)
+	}
+
+	one := filepath.Join(dir, "foo_t3b.conf")
+	if err := os.WriteFile(one, []byte("# hi\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Discover(dir)
+	if err != nil {
+		t.Fatalf("one match: %v", err)
+	}
+	if got != one {
+		t.Fatalf("path = %q, want %q", got, one)
+	}
+
+	two := filepath.Join(dir, "bar.t3b.conf")
+	if err := os.WriteFile(two, []byte("# hi\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = Discover(dir)
+	var many *ErrManyConfigs
+	if !errors.As(err, &many) {
+		t.Fatalf("two matches: got %v, want ErrManyConfigs", err)
+	}
+	if len(many.Names) != 2 {
+		t.Fatalf("Names = %v", many.Names)
+	}
+}
+
+func TestWriteExample(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "t3b.conf")
+
+	if err := WriteExample(path); err != nil {
+		t.Fatalf("WriteExample: %v", err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(raw) == 0 || !strings.Contains(string(raw), "[server]") {
+		t.Fatalf("unexpected example body (%d bytes)", len(raw))
+	}
+
+	if err := WriteExample(path); !errors.Is(err, ErrExampleExists) {
+		t.Fatalf("second write: got %v, want ErrExampleExists", err)
 	}
 }
 

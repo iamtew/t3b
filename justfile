@@ -52,7 +52,7 @@ build-linux:
 # Both cross builds into bin/
 build-all: build-windows build-linux
 
-# Run the bot in the foreground (needs t3b.conf in $PWD or -config)
+# Run the bot in the foreground (needs *t3b.conf in $PWD, or -config / -config_write)
 # go run uses the version package VCS fallback (no Justfile stamp).
 run *args:
     go run ./cmd/t3b {{args}}

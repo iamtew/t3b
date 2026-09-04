@@ -3,8 +3,9 @@
 /t3b.exe
 /bin/
 
-# Local runtime config — Meat Bags copy from t3b.conf.example
+# Local runtime configs — Meat Bags: t3b -config_write (or first-run auto-create)
 /t3b.conf
+/*t3b.conf
 
 # Daemon runtime files in $PWD
 /t3b.sock

@@ -9,7 +9,7 @@ IRC bot written in Go. Built with Clankers; operated by Meat Bags.
 - SASL AUTH (PLAIN) for NickServ-style login
 - Owner and admins by hostmask (`nick!~user@host.name`)
 - Windows and Linux
-- TOML config at `$PWD/t3b.conf`, or `-config path`
+- TOML config: auto-picks the sole `*t3b.conf` in `$PWD`, or `-config path`; `-config_write` drops an example
 - Foreground by default; logs to the terminal; Ctrl+C / SIGTERM quits cleanly
 - Daemon mode with `-daemon`
 - Same binary as CLI router against a running instance (`t3b status`, `restart`, `stop`, `reload`)
@@ -31,9 +31,12 @@ Also available to owner/admin in DM: `.help`, `.status`, `.say #chan text`, and 
 
 ```bash
 just build
-cp t3b.conf.example t3b.conf   # edit server, nick, hostmasks, channels
+t3b -config_write              # writes t3b.conf in $PWD (or: -config_write mybot.conf)
+# edit server, nick, hostmasks, channels — then:
 just run                       # foreground
 ```
+
+On first start with no `*t3b.conf` in `$PWD`, t3b writes a fresh `t3b.conf` and exits so you can fill it in. If several files end with `t3b.conf` (e.g. `bot.t3b.conf` and `other_t3b.conf`), it refuses to guess — use `-config` or clean up. Names like `botname_t3b.conf` / `bot.t3b.conf` count.
 
 `just build` stamps the binary version from git: short commit hash, or `tag-shorthash` when HEAD is exactly on a tag (append `-dirty` if the tree is dirty). Check with `t3b -version`. `just run` / plain `go build` fall back to the embedded VCS hash when present.
 
