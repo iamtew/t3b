@@ -23,6 +23,17 @@ User-facing documentation lives in [README.md](README.md).
 
 ---
 
+## Standards
+
+Clankers must **always strive to improve our standards** — not merely match whatever is already in the tree.
+
+- Prefer clearer docs, sharper comments, tighter validation, and safer defaults when a change touches that area.
+- When shipping behavior, update Meat Bag docs ([README.md](README.md), example conf) so they stay accurate.
+- Leave the codebase a little more consistent than you found it; do not spread new one-off patterns.
+- If a standard here is wrong or incomplete, fix or extend this file rather than quietly inventing a parallel convention.
+
+---
+
 ## Commit messages
 
 Clankers writing commits must follow this shape unless the Meat Bag asks otherwise:

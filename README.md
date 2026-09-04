@@ -1,61 +1,71 @@
-# t3b - tew's irc bot, attempt #3
+# t3b — tew's IRC bot, attempt #3
 
-IRC bot written in Go.
+IRC bot written in Go. Built with Clankers; operated by Meat Bags.
 
-Work in progress... With the Clanker, obviously.
+## Core features
 
-## Core Features (in no particular order):
-- Uses Justfile for build management
-- SSL TLS support
-- SASL AUTH for NickServ and such
-- Bot owner and admins based on hostmask like: `nick!~user@host.name`
-- Runs on both Windows and Linux
-- Uses TOML config file located at `$PWD/t3b.conf` or specified with `-config` flag
-- Foreground mode, default mode, spits out its activities in the terminal where it's started from. Ctrl+C will shutdown bot gracefully.
-- Daemon mode, runs in background when started with `-daemon` flag
-- `t3b` binary can be used as command router on daemonized instance. for example if one is running `t3b -daemon` I can in another window type `t3b status` or `t3b restart` and it will look into the running one, not start a new one.
-- can join multiple channels, set in config file
-- can only join one server/network, set in config file
+- Justfile for build / test / run
+- TLS to the IRC server (`tls_skip_verify` for lab nets only)
+- SASL AUTH (PLAIN) for NickServ-style login
+- Owner and admins by hostmask (`nick!~user@host.name`)
+- Windows and Linux
+- TOML config at `$PWD/t3b.conf`, or `-config path`
+- Foreground by default; logs to the terminal; Ctrl+C / SIGTERM quits cleanly
+- Daemon mode with `-daemon`
+- Same binary as CLI router against a running instance (`t3b status`, `restart`, `stop`, `reload`)
+- Multiple channels, one server / network
 
-## Main features (in no particular order):
-- URL resolution, display Title of a web page when a URL is patesed in IRC channel
-- Twitter / X.Com resolution: Display Tweet plus timestamp, retweets, comments, likes, direct links to media if any present.
-- YouTube resolution: Display Video title, Channel name, Duration, Upload date, Likes/Dislikes
-- Automode: Ensure Owner and admins are always opped in channel bot is opped.
-- Config + behavior commands available to owner and admin in `PRIVMSG` with bot.
-- Admin commmands include: .join #channel, .leave #channel, .op user #channel, .deop user #channel
-- Owner commands include: .stop, .restart, .reload
+## Main features
+
+- URL titles when an `http(s)` link is pasted in a channel
+- Twitter / X: tweet text, timestamp, retweets, replies, likes, media links
+- YouTube: title, channel, duration, upload date, likes (dislikes are not available from Google)
+- Automode: while the bot is op, keep owner and admins opped
+- Config and behavior commands in a **direct message** to the bot (not in channel)
+- Admin: `.join #channel`, `.leave #channel`, `.op nick #channel`, `.deop nick #channel`
+- Owner: `.stop`, `.restart`, `.reload`
+
+Also available to owner/admin in DM: `.help`, `.status`, `.say #chan text`, and owner-only `.nick newnick`.
 
 ## Build / run
 
 ```bash
 just build
-cp t3b.conf.example t3b.conf   # edit hostmasks, server, channels
-just run                       # foreground (Ctrl+C quits)
+cp t3b.conf.example t3b.conf   # edit server, nick, hostmasks, channels
+just run                       # foreground
 ```
 
-### Daemon + CLI router
+Useful recipes: `just test`, `just fmt`, `just tidy`.
 
-Only one instance may own the control endpoint (Unix socket or Windows named pipe). Foreground mode also binds it, so `t3b status` works against either.
+### Daemon and CLI router
+
+Only one process may own the control endpoint. Foreground mode binds it too, so `t3b status` works either way.
 
 ```bash
 t3b -daemon
 t3b status
 t3b reload
-t3b restart   # reconnects IRC in-process; control endpoint stays up
+t3b restart    # reconnects IRC in-process; control endpoint stays up
 t3b stop
 ```
 
-Defaults: Unix `$PWD/t3b.sock` + `$PWD/t3b.pid`; Windows `\\.\pipe\t3b` + `$PWD/t3b.pid`. Override under `[runtime]` in the config.
+Defaults:
+
+| Platform | Control endpoint | Pidfile |
+| -------- | ---------------- | ------- |
+| Unix | `$PWD/t3b.sock` | `$PWD/t3b.pid` |
+| Windows | `\\.\pipe\t3b` | `$PWD/t3b.pid` |
+
+Override under `[runtime]` in the config (`socket_path`, `pid_path`).
 
 ### Resolvers
 
-- Channel PRIVMSG only; first `http(s)` URL per message; failures are logged, not spammed to the channel.
-- Twitter/X via [FxTwitter](https://api.fxtwitter.com)-style JSON (no OAuth).
-- YouTube: set `[youtube] api_key` for Data API v3 (title, channel, duration, upload date, likes). Without a key, oEmbed returns title + channel only. **Dislikes are unavailable from Google** — t3b reports likes only.
+- Channel messages only; first `http(s)` URL per line; fetch failures are logged, not spammed to IRC
+- Twitter / X via [FxTwitter](https://api.fxtwitter.com)-style JSON (no OAuth)
+- YouTube: set `[youtube] api_key` for Data API v3 (title, channel, duration, upload date, likes). Without a key, oEmbed returns title and channel only
 
 ### Privileged DM commands
 
-Owner/admin commands are accepted only in a direct message to the bot nick (not in channel). Extra behavior commands: `.status`, `.say #chan text`, `.nick newnick` (owner), `.help`.
+Hostmask-gated. Ignored if sent in a channel. Use `.help` for the list your mask may run.
 
-End of file.
+Clankers: see [AGENTS.md](AGENTS.md) for how to change this repo.
