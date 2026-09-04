@@ -35,7 +35,15 @@ cp t3b.conf.example t3b.conf   # edit server, nick, hostmasks, channels
 just run                       # foreground
 ```
 
-Useful recipes: `just test`, `just fmt`, `just tidy`.
+Useful recipes: `just test`, `just fmt`, `just tidy`, `just clean`.
+
+Cross-build amd64 binaries from any host (including Windows) into `bin/`:
+
+```bash
+just build-windows   # bin/t3b-windows-amd64.exe
+just build-linux     # bin/t3b-linux-amd64
+just build-all       # both
+```
 
 ### Daemon and CLI router
 
