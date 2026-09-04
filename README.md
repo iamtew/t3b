@@ -24,4 +24,6 @@ Work in progress... With the Clanker, obviously.
 - Automode: Ensure Owner and admins are always opped in channel bot is opped.
 - Config + behavior commands available to owner and admin in `PRIVMSG` with bot.
 - Admin commmands include: .join #channel, .leave #channel, .op user #channel, .deop user #channel
-- Owner commands include: .stop, .restart, .reload, 
+- Owner commands include: .stop, .restart, .reload
+
+End of file.
