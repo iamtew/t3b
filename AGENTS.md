@@ -63,3 +63,15 @@ Wire up the bot before the network notices
 ```
 
 ---
+
+## Meat Bag phrases
+
+When a Meat Bag says **ship it** (or equivalent: LGTM + ship it), Clankers must:
+
+1. Save any outstanding work in the tree
+2. Create the commit(s) for that work (follow [Commit messages](#commit-messages))
+3. Push the branch to the remote
+
+Do not stop at a local commit unless the Meat Bag explicitly says not to push.
+
+---
