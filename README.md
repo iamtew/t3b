@@ -1,6 +1,6 @@
 # t3b - tew's irc bot, attempt #3
 
-IRC bot written in Go. 
+IRC bot written in Go.
 
 Work in progress... With the Clanker, obviously.
 
@@ -25,5 +25,37 @@ Work in progress... With the Clanker, obviously.
 - Config + behavior commands available to owner and admin in `PRIVMSG` with bot.
 - Admin commmands include: .join #channel, .leave #channel, .op user #channel, .deop user #channel
 - Owner commands include: .stop, .restart, .reload
+
+## Build / run
+
+```bash
+just build
+cp t3b.conf.example t3b.conf   # edit hostmasks, server, channels
+just run                       # foreground (Ctrl+C quits)
+```
+
+### Daemon + CLI router
+
+Only one instance may own the control endpoint (Unix socket or Windows named pipe). Foreground mode also binds it, so `t3b status` works against either.
+
+```bash
+t3b -daemon
+t3b status
+t3b reload
+t3b restart   # reconnects IRC in-process; control endpoint stays up
+t3b stop
+```
+
+Defaults: Unix `$PWD/t3b.sock` + `$PWD/t3b.pid`; Windows `\\.\pipe\t3b` + `$PWD/t3b.pid`. Override under `[runtime]` in the config.
+
+### Resolvers
+
+- Channel PRIVMSG only; first `http(s)` URL per message; failures are logged, not spammed to the channel.
+- Twitter/X via [FxTwitter](https://api.fxtwitter.com)-style JSON (no OAuth).
+- YouTube: set `[youtube] api_key` for Data API v3 (title, channel, duration, upload date, likes). Without a key, oEmbed returns title + channel only. **Dislikes are unavailable from Google** — t3b reports likes only.
+
+### Privileged DM commands
+
+Owner/admin commands are accepted only in a direct message to the bot nick (not in channel). Extra behavior commands: `.status`, `.say #chan text`, `.nick newnick` (owner), `.help`.
 
 End of file.

@@ -6,6 +6,10 @@
 # Local runtime config — Meat Bags copy from t3b.conf.example
 /t3b.conf
 
+# Daemon runtime files in $PWD
+/t3b.sock
+/t3b.pid
+
 # Go
 *.test
 *.out

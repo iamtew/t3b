@@ -24,7 +24,7 @@ nick = "t3b"
 user = "t3b"
 realname = "tew's irc bot"
 
-# SASL is parsed and reserved; live auth is not wired yet (see internal/bot).
+# Prefer TLS when using PLAIN (t3b warns if sasl.enabled and tls = false).
 [sasl]
 enabled = false
 mechanism = "PLAIN"
@@ -32,5 +32,22 @@ user = ""
 password = ""
 
 [runtime]
-# Reserved for daemon IPC (Unix socket / named pipe). Unused until -daemon works.
+# Empty → platform default: Unix $PWD/t3b.sock , Windows \\.\pipe\t3b
 socket_path = ""
+# Empty → $PWD/t3b.pid
+pid_path = ""
+
+[resolve]
+url_titles = true
+twitter = true
+youtube = true
+user_agent = "t3b/0.1 (+https://github.com/iamtew/t3b)"
+http_timeout_sec = 8
+
+[youtube]
+# Optional YouTube Data API v3 key. Without it, oEmbed gives title + channel only.
+# Google no longer returns dislike counts — likes only.
+api_key = ""
+
+[automode]
+enabled = true
