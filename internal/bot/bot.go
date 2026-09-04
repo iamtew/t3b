@@ -135,6 +135,8 @@ func (b *Bot) runSession(ctx context.Context) error {
 		User:   cfg.Identity.User,
 		Name:   cfg.Identity.Realname,
 		SSL:    cfg.Server.TLS,
+		// CTCP VERSION reply — not the default girc / Go runtime string.
+		Version: "t3b (github.com/iamtew/t3b)",
 	}
 	if cfg.Server.TLS && cfg.Server.TLSSkipVerify {
 		// Lab nets only — Meat Bags should keep this false on real networks.
