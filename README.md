@@ -1,12 +1,14 @@
 # t3b - tew's irc bot, attempt #3
 
-IRC bot written in Go.
+IRC bot written in Go. 
+
+Work in progress... With the Clanker, obviously.
 
 ## Core Features (in no particular order):
 - Uses Justfile for build management
 - SSL TLS support
 - SASL AUTH for NickServ and such
-- Bot owner and admins based on hostmask like: nick!~user@host.name
+- Bot owner and admins based on hostmask like: `nick!~user@host.name`
 - Runs on both Windows and Linux
 - Uses TOML config file located at `$PWD/t3b.conf` or specified with `-config` flag
 - Foreground mode, default mode, spits out its activities in the terminal where it's started from. Ctrl+C will shutdown bot gracefully.
@@ -20,6 +22,6 @@ IRC bot written in Go.
 - Twitter / X.Com resolution: Display Tweet plus timestamp, retweets, comments, likes, direct links to media if any present.
 - YouTube resolution: Display Video title, Channel name, Duration, Upload date, Likes/Dislikes
 - Automode: Ensure Owner and admins are always opped in channel bot is opped.
-- Config + behavior commands available to owner and admin in PRIVMSG with bot.
+- Config + behavior commands available to owner and admin in `PRIVMSG` with bot.
 - Admin commmands include: .join #channel, .leave #channel, .op user #channel, .deop user #channel
 - Owner commands include: .stop, .restart, .reload, 
