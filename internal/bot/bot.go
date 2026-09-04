@@ -266,12 +266,11 @@ func (b *Bot) registerHandlers(client *girc.Client) {
 			from = e.Source.String()
 		}
 		text := e.Last()
-		b.log.Printf("PRIVMSG %s <%s> %s", target, from, text)
-
-		// Ignore our own messages.
+		// Own PRIVMSG is logged in sendPRIVMSG; many nets never echo it back.
 		if e.Source != nil && strings.EqualFold(e.Source.Name, c.GetNick()) {
 			return
 		}
+		b.log.Printf("PRIVMSG %s <%s> %s", target, from, text)
 
 		if girc.IsValidChannel(target) {
 			b.handleChannelPRIVMSG(c, target, text)
@@ -284,11 +283,11 @@ func (b *Bot) registerHandlers(client *girc.Client) {
 		reply, err := commands.Dispatch(b.Auth(), from, text, b)
 		if err != nil {
 			b.log.Printf("command error: %v", err)
-			c.Cmd.Message(e.Source.Name, "error: "+err.Error())
+			b.sendPRIVMSG(c, e.Source.Name, "error: "+err.Error())
 			return
 		}
 		if reply != "" {
-			c.Cmd.Message(e.Source.Name, reply)
+			b.sendPRIVMSG(c, e.Source.Name, reply)
 		}
 	})
 
@@ -306,8 +305,16 @@ func (b *Bot) handleChannelPRIVMSG(c *girc.Client, channel, text string) {
 	defer cancel()
 	reply := b.engine.HandleMessage(ctx, channel, text)
 	if reply != "" {
-		c.Cmd.Message(channel, reply)
+		b.sendPRIVMSG(c, channel, reply)
 	}
+}
+
+// sendPRIVMSG writes a PRIVMSG and logs the same line Meat Bags see in-channel.
+// Incoming handler logs everyone else; we log our own here because servers
+// often do not echo our messages (the log otherwise looks like t3b is mute).
+func (b *Bot) sendPRIVMSG(c *girc.Client, target, text string) {
+	b.log.Printf("PRIVMSG %s <%s> %s", target, c.GetNick(), text)
+	c.Cmd.Message(target, text)
 }
 
 func (b *Bot) botIsOp(c *girc.Client, channel string) bool {
@@ -420,7 +427,7 @@ func (b *Bot) Deop(nick, channel string) error {
 // Say implements commands.IRC.
 func (b *Bot) Say(channel, text string) error {
 	return b.withClient(func(c *girc.Client) error {
-		c.Cmd.Message(channel, text)
+		b.sendPRIVMSG(c, channel, text)
 		return nil
 	})
 }

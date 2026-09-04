@@ -38,6 +38,7 @@ Prefer **public, unauthenticated sources** over registered vendor APIs and API k
 
 - Scraping or reading public page/JSON endpoints (watch pages, oEmbed, FxTwitter-style public APIs) is the default for resolvers and similar features.
 - Do **not** add Google / Twitter / etc. developer-console API keys, OAuth clients, or paid API SDKs unless the Meat Bag explicitly asks.
+- YouTube details are the exception: Data API v3 when `resolve.youtube_api_key` is set. No key → generic URL title. Never log the key.
 - Keep custom/third-party API usage **minimal**. If public data already covers the need, delete or refuse the keyed API path.
 - Document fragility (HTML shape changes, rate limits) in comments and Meat Bag docs when we rely on unofficial public endpoints.
 

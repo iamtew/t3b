@@ -86,8 +86,11 @@ func (e *Engine) rebuildLocked() {
 	if e.cfg.TwitterOn() {
 		e.resolvers = append(e.resolvers, &Twitter{client: e.client, ua: e.cfg.UserAgent})
 	}
+	// YouTube Data API only when a key is set; otherwise URLTitle handles the link.
 	if e.cfg.YouTubeOn() {
-		e.resolvers = append(e.resolvers, &YouTube{client: e.client, ua: e.cfg.UserAgent, log: e.log})
+		if key := strings.TrimSpace(e.cfg.YouTubeAPIKey); key != "" {
+			e.resolvers = append(e.resolvers, &YouTube{client: e.client, ua: e.cfg.UserAgent, key: key})
+		}
 	}
 	if e.cfg.URLTitlesOn() {
 		e.resolvers = append(e.resolvers, &URLTitle{client: e.client, ua: e.cfg.UserAgent})

@@ -19,7 +19,7 @@ IRC bot written in Go. Built with Clankers; operated by Meat Bags.
 
 - URL titles when an `http(s)` link is pasted in a channel
 - Twitter / X: tweet text, timestamp, retweets, replies, likes, media links
-- YouTube: title, channel, duration, upload date, views, likes from the public watch page (dislikes unavailable)
+- YouTube: Data API v3 for title, channel, duration, upload date, views, likes when `youtube_api_key` is set (plain page title if the key is omitted)
 - Automode: while the bot is op, keep owner and admins opped
 - Config and behavior commands in a **direct message** to the bot (not in channel)
 - Admin: `.join #channel`, `.leave #channel`, `.op nick #channel`, `.deop nick #channel`
@@ -75,7 +75,7 @@ Override under `[runtime]` in the config (`socket_path`, `pid_path`).
 
 - Channel messages only; first `http(s)` URL per line; fetch failures are logged, not spammed to IRC
 - Twitter / X via [FxTwitter](https://api.fxtwitter.com)-style JSON (no OAuth)
-- YouTube: public watch-page scrape for title, channel, duration, upload date, views, likes (dislikes unavailable; oEmbed is fallback)
+- YouTube: [Data API v3](https://developers.google.com/youtube/v3) `videos.list` when `[resolve] youtube_api_key` is set (title, channel, duration, upload date, views, likes; 1 quota unit). No key → generic URL title like any other link. Do not commit the key.
 
 ### Privileged DM commands
 

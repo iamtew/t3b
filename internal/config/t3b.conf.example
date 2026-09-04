@@ -42,6 +42,8 @@ pid_path = ""
 url_titles = true
 twitter = true
 youtube = true
+# Data API v3 key (YouTube Data API). Empty → YouTube links get a plain page title.
+# youtube_api_key = ""
 # Omit user_agent to use the binary build version (t3b/<hash or tag-hash>).
 # user_agent = "t3b/custom (+https://example.com)"
 http_timeout_sec = 8

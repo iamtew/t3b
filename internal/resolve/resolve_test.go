@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/iamtew/t3b/internal/config"
 )
 
 func TestFirstURL(t *testing.T) {
@@ -91,82 +93,144 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
-func TestYouTubeIDAndOEmbed(t *testing.T) {
+func TestYouTubeID(t *testing.T) {
 	u, _ := url.Parse("https://youtu.be/dQw4w9WgXcQ")
 	if youtubeID(u) != "dQw4w9WgXcQ" {
 		t.Fatalf("id=%q", youtubeID(u))
 	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"title":"Never","author_name":"Rick"}`))
-	}))
-	defer srv.Close()
-
-	y := &YouTube{
-		ua: "t3b-test",
-		client: &http.Client{
-			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-				req.URL.Scheme = "http"
-				req.URL.Host = strings.TrimPrefix(srv.URL, "http://")
-				req.URL.Path = "/"
-				req.URL.RawQuery = ""
-				return http.DefaultTransport.RoundTrip(req)
-			}),
-		},
-	}
-	reply, ok, err := y.resolveOEmbed(context.Background(), "dQw4w9WgXcQ")
-	if err != nil || !ok || !strings.Contains(reply, "Never") {
-		t.Fatalf("reply=%q ok=%v err=%v", reply, ok, err)
+	u2, _ := url.Parse("https://www.youtube.com/watch?v=jNQXAC9IVRw")
+	if youtubeID(u2) != "jNQXAC9IVRw" {
+		t.Fatalf("id=%q", youtubeID(u2))
 	}
 }
 
-func TestYouTubePublicPage(t *testing.T) {
-	html := `<html><script>var ytInitialPlayerResponse = {"videoDetails":{"title":"Me at the zoo","author":"jawed","lengthSeconds":"19","viewCount":"415854353"},"microformat":{"playerMicroformatRenderer":{"publishDate":"2005-04-23T20:31:52-07:00","likeCount":"19591766"}}};</script></html>`
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(html))
+const zooAPIJSON = `{"items":[{"snippet":{"title":"Me at the zoo","channelTitle":"jawed","publishedAt":"2005-04-23T20:31:52-07:00"},"contentDetails":{"duration":"PT19S"},"statistics":{"viewCount":"415854353","likeCount":"19591766"}}]}`
+
+func rewriteToTestServer(srv *httptest.Server) http.RoundTripper {
+	return roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		req.URL.Scheme = "http"
+		req.URL.Host = strings.TrimPrefix(srv.URL, "http://")
+		return http.DefaultTransport.RoundTrip(req)
+	})
+}
+
+func TestYouTubeAPI(t *testing.T) {
+	var gotKey, gotID bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("key") == "test-key" {
+			gotKey = true
+		}
+		if r.URL.Query().Get("id") == "jNQXAC9IVRw" {
+			gotID = true
+		}
+		if !strings.Contains(r.URL.Path, "/youtube/v3/videos") {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(zooAPIJSON))
 	}))
 	defer srv.Close()
 
 	y := &YouTube{
-		ua: "t3b-test",
+		ua:  "t3b-test",
+		key: "test-key",
 		client: &http.Client{
-			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-				req.URL.Scheme = "http"
-				req.URL.Host = strings.TrimPrefix(srv.URL, "http://")
-				req.URL.Path = "/"
-				req.URL.RawQuery = ""
-				return http.DefaultTransport.RoundTrip(req)
-			}),
+			Transport: rewriteToTestServer(srv),
 		},
 	}
-	reply, ok, err := y.resolvePublicPage(context.Background(), "jNQXAC9IVRw")
+	u, _ := url.Parse("https://youtu.be/jNQXAC9IVRw")
+	reply, ok, err := y.Resolve(context.Background(), u)
 	if err != nil || !ok {
 		t.Fatalf("ok=%v err=%v reply=%q", ok, err, reply)
 	}
-	for _, want := range []string{"Me at the zoo", "jawed", "19s", "uploaded 2005-04-24", "415.9M views", "19.6M likes"} {
-		// publishDate -07:00 becomes UTC 2005-04-24
-		if !strings.Contains(reply, want) && want != "uploaded 2005-04-24" {
-			if want == "uploaded 2005-04-24" {
-				continue
-			}
+	for _, want := range []string{"Me at the zoo", "jawed", "19s", "415.9M views", "19.6M likes"} {
+		if !strings.Contains(reply, want) {
 			t.Fatalf("missing %q in %q", want, reply)
 		}
 	}
 	if !strings.Contains(reply, "uploaded 2005-04-") {
 		t.Fatalf("missing upload date in %q", reply)
 	}
-	if !strings.Contains(reply, "415.9M views") || !strings.Contains(reply, "19.6M likes") {
-		t.Fatalf("missing counts in %q", reply)
+	if !gotKey || !gotID {
+		t.Fatalf("key=%v id=%v", gotKey, gotID)
 	}
 }
 
-func TestExtractJSONObject(t *testing.T) {
-	html := `foo ytInitialPlayerResponse = {"a":{"b":1},"c":"}"} ;`
-	raw, ok := extractJSONObject(html, "ytInitialPlayerResponse")
-	if !ok {
-		t.Fatal("expected object")
+func TestYouTubeAPIEmptyItems(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"items":[]}`))
+	}))
+	defer srv.Close()
+	y := &YouTube{
+		key:    "test-key",
+		client: &http.Client{Transport: rewriteToTestServer(srv)},
 	}
-	if !strings.Contains(string(raw), `"b":1`) {
-		t.Fatalf("got %s", raw)
+	u, _ := url.Parse("https://youtu.be/jNQXAC9IVRw")
+	reply, ok, err := y.Resolve(context.Background(), u)
+	if err != nil || ok || reply != "" {
+		t.Fatalf("ok=%v err=%v reply=%q", ok, err, reply)
+	}
+}
+
+func TestYouTubeAPIError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":{"code":403,"message":"The request cannot be completed because you have exceeded your quota."}}`))
+	}))
+	defer srv.Close()
+	y := &YouTube{
+		key:    "test-key",
+		client: &http.Client{Transport: rewriteToTestServer(srv)},
+	}
+	u, _ := url.Parse("https://youtu.be/jNQXAC9IVRw")
+	_, _, err := y.Resolve(context.Background(), u)
+	if err == nil || !strings.Contains(err.Error(), "quota") {
+		t.Fatalf("err=%v", err)
+	}
+	if strings.Contains(err.Error(), "test-key") {
+		t.Fatalf("API key leaked in error: %v", err)
+	}
+}
+
+func TestYouTubeWithoutKeyUsesURLTitle(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/youtube/v3/") {
+			t.Errorf("Data API should not be called without a key")
+			http.Error(w, "nope", http.StatusTeapot)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<html><head><title>Me at the zoo - YouTube</title></head></html>`))
+	}))
+	defer srv.Close()
+
+	on := true
+	e := New(nil, config.Resolve{
+		YouTube:        &on,
+		URLTitles:      &on,
+		UserAgent:      "t3b-test",
+		HTTPTimeoutSec: 5,
+	})
+	e.client.Transport = rewriteToTestServer(srv)
+	reply := e.HandleMessage(context.Background(), "#chan", "see https://youtu.be/jNQXAC9IVRw")
+	if !strings.Contains(reply, "Title:") || !strings.Contains(reply, "Me at the zoo") {
+		t.Fatalf("reply=%q", reply)
+	}
+	if strings.Contains(reply, "views") || strings.Contains(reply, "likes") {
+		t.Fatalf("plain title should not have API details: %q", reply)
+	}
+}
+
+func TestFormatISODuration(t *testing.T) {
+	if got := formatISODuration("PT1M58S"); got != "1m58s" {
+		t.Fatalf("got %q", got)
+	}
+	if got := formatISODuration("PT2H42M54S"); got != "2h42m54s" {
+		t.Fatalf("got %q", got)
+	}
+	if got := formatISODuration("P1DT2H"); got != "26h0m0s" {
+		t.Fatalf("got %q", got)
 	}
 }
 

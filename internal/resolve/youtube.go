@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -18,13 +17,18 @@ var (
 	ytHost  = regexp.MustCompile(`(?i)^(www\.|m\.|music\.)?(youtube\.com|youtu\.be)$`)
 	ytWatch = regexp.MustCompile(`(?i)(?:v=|/embed/|/shorts/|/live/|/v/)([A-Za-z0-9_-]{6,})`)
 	ytBe    = regexp.MustCompile(`(?i)^/([A-Za-z0-9_-]{6,})`)
+
+	isoDurationRe = regexp.MustCompile(`^P(?:(\d+)D)?T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$`)
 )
 
-// YouTube resolves watch URLs from public page data (no Google API key).
+// youtubeAPIBase is Google Data API v3 videos.list (1 quota unit).
+const youtubeAPIBase = "https://www.googleapis.com/youtube/v3/videos"
+
+// YouTube resolves watch URLs via Data API v3 when a Meat Bag API key is set.
 type YouTube struct {
 	client *http.Client
 	ua     string
-	log    *log.Logger
+	key    string
 }
 
 // Match detects youtube.com / youtu.be video URLs.
@@ -54,186 +58,46 @@ func youtubeID(u *url.URL) string {
 	return ""
 }
 
-// Resolve scrapes the public watch page (ytInitialPlayerResponse).
-// oEmbed is last resort (title + channel only).
+type ytAPIResp struct {
+	Items []struct {
+		Snippet struct {
+			Title        string `json:"title"`
+			ChannelTitle string `json:"channelTitle"`
+			PublishedAt  string `json:"publishedAt"`
+		} `json:"snippet"`
+		ContentDetails struct {
+			Duration string `json:"duration"`
+		} `json:"contentDetails"`
+		Statistics struct {
+			ViewCount string `json:"viewCount"`
+			LikeCount string `json:"likeCount"`
+		} `json:"statistics"`
+	} `json:"items"`
+	Error *struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+// Resolve fetches snippet + duration + stats from Data API v3.
+// Never log y.key or the request URL (the key is in the query).
 func (y *YouTube) Resolve(ctx context.Context, u *url.URL) (string, bool, error) {
 	id := youtubeID(u)
-	if id == "" {
+	if id == "" || strings.TrimSpace(y.key) == "" {
 		return "", false, nil
 	}
-	reply, ok, err := y.resolvePublicPage(ctx, id)
-	if err == nil && ok {
-		return reply, true, nil
-	}
-	if y.log != nil && err != nil {
-		y.log.Printf("youtube page scrape: %v — falling back to oEmbed", err)
-	}
-	return y.resolveOEmbed(ctx, id)
-}
 
-// ytMeta is the normalised fields we print on IRC.
-type ytMeta struct {
-	Title    string
-	Channel  string
-	Duration string
-	Uploaded string
-	Views    string
-	Likes    string
-}
+	q := url.Values{}
+	q.Set("part", "snippet,contentDetails,statistics")
+	q.Set("id", id)
+	q.Set("key", y.key)
 
-func (m ytMeta) Format() string {
-	parts := []string{"YouTube: " + m.Title}
-	if m.Channel != "" {
-		parts = append(parts, m.Channel)
-	}
-	if m.Duration != "" && m.Duration != "?" {
-		parts = append(parts, m.Duration)
-	}
-	if m.Uploaded != "" {
-		parts = append(parts, "uploaded "+m.Uploaded)
-	}
-	if m.Views != "" {
-		parts = append(parts, m.Views+" views")
-	}
-	if m.Likes != "" {
-		parts = append(parts, m.Likes+" likes")
-	}
-	return strings.Join(parts, " | ")
-}
-
-// playerResponse is the subset of ytInitialPlayerResponse we care about.
-type playerResponse struct {
-	VideoDetails struct {
-		Title         string `json:"title"`
-		Author        string `json:"author"`
-		LengthSeconds string `json:"lengthSeconds"`
-		ViewCount     string `json:"viewCount"`
-	} `json:"videoDetails"`
-	Microformat struct {
-		PlayerMicroformatRenderer struct {
-			PublishDate      string `json:"publishDate"`
-			UploadDate       string `json:"uploadDate"`
-			LikeCount        string `json:"likeCount"`
-			OwnerChannelName string `json:"ownerChannelName"`
-		} `json:"playerMicroformatRenderer"`
-	} `json:"microformat"`
-}
-
-func (y *YouTube) resolvePublicPage(ctx context.Context, id string) (string, bool, error) {
-	watch := "https://www.youtube.com/watch?v=" + url.QueryEscape(id)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, watch, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, youtubeAPIBase+"?"+q.Encode(), nil)
 	if err != nil {
 		return "", false, err
 	}
 	req.Header.Set("User-Agent", y.ua)
-	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 
-	resp, err := y.client.Do(req)
-	if err != nil {
-		return "", false, err
-	}
-	defer resp.Body.Close()
-	// Watch pages are large; allow up to maxBody*2 for the HTML shell.
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody*2))
-	if err != nil {
-		return "", false, err
-	}
-	raw, ok := extractJSONObject(string(body), "ytInitialPlayerResponse")
-	if !ok {
-		return "", false, fmt.Errorf("ytInitialPlayerResponse not found")
-	}
-	var pr playerResponse
-	if err := json.Unmarshal(raw, &pr); err != nil {
-		return "", false, err
-	}
-	vd := pr.VideoDetails
-	mf := pr.Microformat.PlayerMicroformatRenderer
-	channel := vd.Author
-	if channel == "" {
-		channel = mf.OwnerChannelName
-	}
-	uploaded := mf.PublishDate
-	if uploaded == "" {
-		uploaded = mf.UploadDate
-	}
-	sec, _ := strconv.Atoi(vd.LengthSeconds)
-	meta := ytMeta{
-		Title:    collapseSpace(vd.Title),
-		Channel:  collapseSpace(channel),
-		Duration: formatSeconds(sec),
-		Uploaded: formatUploadDate(uploaded),
-		Views:    compactCount(vd.ViewCount),
-		Likes:    compactCount(mf.LikeCount),
-	}
-	if meta.Title == "" {
-		return "", false, nil
-	}
-	return meta.Format(), true, nil
-}
-
-// extractJSONObject finds `name = {...}` / `name={...}` in HTML and returns the object bytes.
-func extractJSONObject(html, name string) ([]byte, bool) {
-	idx := strings.Index(html, name)
-	if idx < 0 {
-		return nil, false
-	}
-	rest := html[idx+len(name):]
-	eq := strings.IndexByte(rest, '=')
-	if eq < 0 {
-		return nil, false
-	}
-	rest = rest[eq+1:]
-	rest = strings.TrimLeft(rest, " \t\r\n")
-	if rest == "" || rest[0] != '{' {
-		return nil, false
-	}
-	depth := 0
-	inStr := false
-	esc := false
-	for i := 0; i < len(rest); i++ {
-		c := rest[i]
-		if inStr {
-			if esc {
-				esc = false
-				continue
-			}
-			if c == '\\' {
-				esc = true
-				continue
-			}
-			if c == '"' {
-				inStr = false
-			}
-			continue
-		}
-		switch c {
-		case '"':
-			inStr = true
-		case '{':
-			depth++
-		case '}':
-			depth--
-			if depth == 0 {
-				return []byte(rest[:i+1]), true
-			}
-		}
-	}
-	return nil, false
-}
-
-type oembedResp struct {
-	Title      string `json:"title"`
-	AuthorName string `json:"author_name"`
-}
-
-func (y *YouTube) resolveOEmbed(ctx context.Context, id string) (string, bool, error) {
-	watch := "https://www.youtube.com/watch?v=" + url.QueryEscape(id)
-	apiURL := "https://www.youtube.com/oembed?format=json&url=" + url.QueryEscape(watch)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
-	if err != nil {
-		return "", false, err
-	}
-	req.Header.Set("User-Agent", y.ua)
 	resp, err := y.client.Do(req)
 	if err != nil {
 		return "", false, err
@@ -243,18 +107,43 @@ func (y *YouTube) resolveOEmbed(ctx context.Context, id string) (string, bool, e
 	if err != nil {
 		return "", false, err
 	}
-	var parsed oembedResp
+
+	var parsed ytAPIResp
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		return "", false, err
 	}
-	if parsed.Title == "" {
+	if parsed.Error != nil && parsed.Error.Message != "" {
+		return "", false, fmt.Errorf("youtube api: %s", parsed.Error.Message)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", false, fmt.Errorf("youtube api: http %d", resp.StatusCode)
+	}
+	if len(parsed.Items) == 0 {
 		return "", false, nil
 	}
-	meta := ytMeta{
-		Title:   collapseSpace(parsed.Title),
-		Channel: collapseSpace(parsed.AuthorName),
+	it := parsed.Items[0]
+	title := collapseSpace(it.Snippet.Title)
+	if title == "" {
+		return "", false, nil
 	}
-	return meta.Format(), true, nil
+
+	parts := []string{"YouTube: " + title}
+	if ch := collapseSpace(it.Snippet.ChannelTitle); ch != "" {
+		parts = append(parts, ch)
+	}
+	if d := formatISODuration(it.ContentDetails.Duration); d != "" {
+		parts = append(parts, d)
+	}
+	if uploaded := formatUploadDate(it.Snippet.PublishedAt); uploaded != "" {
+		parts = append(parts, "uploaded "+uploaded)
+	}
+	if v := compactCount(it.Statistics.ViewCount); v != "" {
+		parts = append(parts, v+" views")
+	}
+	if l := compactCount(it.Statistics.LikeCount); l != "" {
+		parts = append(parts, l+" likes")
+	}
+	return strings.Join(parts, " | "), true, nil
 }
 
 func formatSeconds(sec int) string {
@@ -273,6 +162,19 @@ func formatSeconds(sec int) string {
 	return fmt.Sprintf("%ds", s)
 }
 
+func formatISODuration(raw string) string {
+	raw = strings.TrimSpace(raw)
+	m := isoDurationRe.FindStringSubmatch(raw)
+	if len(m) != 5 {
+		return ""
+	}
+	days, _ := strconv.Atoi(m[1])
+	h, _ := strconv.Atoi(m[2])
+	min, _ := strconv.Atoi(m[3])
+	s, _ := strconv.Atoi(m[4])
+	return formatSeconds(days*86400 + h*3600 + min*60 + s)
+}
+
 func formatUploadDate(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -284,7 +186,7 @@ func formatUploadDate(raw string) string {
 			return t.UTC().Format("2006-01-02")
 		}
 	}
-	if len(raw) >= 10 {
+	if len(raw) >= 10 && raw[4] == '-' && raw[7] == '-' {
 		return raw[:10]
 	}
 	return raw

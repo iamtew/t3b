@@ -60,6 +60,7 @@ type Resolve struct {
 	URLTitles      *bool  `toml:"url_titles"`
 	Twitter        *bool  `toml:"twitter"`
 	YouTube        *bool  `toml:"youtube"`
+	YouTubeAPIKey  string `toml:"youtube_api_key"` // Data API v3; empty → generic URL title
 	UserAgent      string `toml:"user_agent"`
 	HTTPTimeoutSec int    `toml:"http_timeout_sec"`
 }
@@ -110,6 +111,7 @@ func (c *Config) applyDefaults() {
 	if c.Resolve.YouTube == nil {
 		c.Resolve.YouTube = boolPtr(true)
 	}
+	c.Resolve.YouTubeAPIKey = strings.TrimSpace(c.Resolve.YouTubeAPIKey)
 	if c.Automode.Enabled == nil {
 		c.Automode.Enabled = boolPtr(true)
 	}

@@ -65,6 +65,38 @@ func TestSASLRequiresPLAIN(t *testing.T) {
 	}
 }
 
+func TestLoadYouTubeAPIKey(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "t3b.conf")
+	body := `
+channels = ["#chan"]
+owner = "tew!~tew@host"
+
+[server]
+host = "irc.example.net"
+port = 6697
+tls = true
+
+[identity]
+nick = "t3b"
+user = "t3b"
+realname = "bot"
+
+[resolve]
+youtube_api_key = "  test-key  "
+`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Resolve.YouTubeAPIKey != "test-key" {
+		t.Fatalf("key=%q", cfg.Resolve.YouTubeAPIKey)
+	}
+}
+
 func TestResolveTogglesOff(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "t3b.conf")
