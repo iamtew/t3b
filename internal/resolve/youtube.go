@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -19,11 +20,10 @@ var (
 	ytBe    = regexp.MustCompile(`(?i)^/([A-Za-z0-9_-]{6,})`)
 )
 
-// YouTube resolves watch URLs via Data API v3 or oEmbed fallback.
+// YouTube resolves watch URLs from public page data (no Google API key).
 type YouTube struct {
 	client *http.Client
 	ua     string
-	apiKey string
 	log    *log.Logger
 }
 
@@ -54,75 +54,171 @@ func youtubeID(u *url.URL) string {
 	return ""
 }
 
-// Resolve prefers Data API when a key is set; otherwise oEmbed title+author.
+// Resolve scrapes the public watch page (ytInitialPlayerResponse).
+// oEmbed is last resort (title + channel only).
 func (y *YouTube) Resolve(ctx context.Context, u *url.URL) (string, bool, error) {
 	id := youtubeID(u)
 	if id == "" {
 		return "", false, nil
 	}
-	if strings.TrimSpace(y.apiKey) != "" {
-		return y.resolveAPI(ctx, id)
+	reply, ok, err := y.resolvePublicPage(ctx, id)
+	if err == nil && ok {
+		return reply, true, nil
 	}
-	if y.log != nil {
-		y.log.Printf("youtube: no api_key — oEmbed only (duration/likes need Data API)")
+	if y.log != nil && err != nil {
+		y.log.Printf("youtube page scrape: %v — falling back to oEmbed", err)
 	}
 	return y.resolveOEmbed(ctx, id)
 }
 
-type ytAPIResp struct {
-	Items []struct {
-		Snippet struct {
-			Title        string `json:"title"`
-			ChannelTitle string `json:"channelTitle"`
-			PublishedAt  string `json:"publishedAt"`
-		} `json:"snippet"`
-		ContentDetails struct {
-			Duration string `json:"duration"`
-		} `json:"contentDetails"`
-		Statistics struct {
-			LikeCount string `json:"likeCount"`
-			ViewCount string `json:"viewCount"`
-		} `json:"statistics"`
-	} `json:"items"`
+// ytMeta is the normalised fields we print on IRC.
+type ytMeta struct {
+	Title    string
+	Channel  string
+	Duration string
+	Uploaded string
+	Views    string
+	Likes    string
 }
 
-func (y *YouTube) resolveAPI(ctx context.Context, id string) (string, bool, error) {
-	q := url.Values{}
-	q.Set("part", "snippet,contentDetails,statistics")
-	q.Set("id", id)
-	q.Set("key", y.apiKey)
-	apiURL := "https://www.googleapis.com/youtube/v3/videos?" + q.Encode()
+func (m ytMeta) Format() string {
+	parts := []string{"YouTube: " + m.Title}
+	if m.Channel != "" {
+		parts = append(parts, m.Channel)
+	}
+	if m.Duration != "" && m.Duration != "?" {
+		parts = append(parts, m.Duration)
+	}
+	if m.Uploaded != "" {
+		parts = append(parts, "uploaded "+m.Uploaded)
+	}
+	if m.Views != "" {
+		parts = append(parts, m.Views+" views")
+	}
+	if m.Likes != "" {
+		parts = append(parts, m.Likes+" likes")
+	}
+	return strings.Join(parts, " | ")
+}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+// playerResponse is the subset of ytInitialPlayerResponse we care about.
+type playerResponse struct {
+	VideoDetails struct {
+		Title         string `json:"title"`
+		Author        string `json:"author"`
+		LengthSeconds string `json:"lengthSeconds"`
+		ViewCount     string `json:"viewCount"`
+	} `json:"videoDetails"`
+	Microformat struct {
+		PlayerMicroformatRenderer struct {
+			PublishDate      string `json:"publishDate"`
+			UploadDate       string `json:"uploadDate"`
+			LikeCount        string `json:"likeCount"`
+			OwnerChannelName string `json:"ownerChannelName"`
+		} `json:"playerMicroformatRenderer"`
+	} `json:"microformat"`
+}
+
+func (y *YouTube) resolvePublicPage(ctx context.Context, id string) (string, bool, error) {
+	watch := "https://www.youtube.com/watch?v=" + url.QueryEscape(id)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, watch, nil)
 	if err != nil {
 		return "", false, err
 	}
 	req.Header.Set("User-Agent", y.ua)
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+
 	resp, err := y.client.Do(req)
 	if err != nil {
 		return "", false, err
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
+	// Watch pages are large; allow up to maxBody*2 for the HTML shell.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody*2))
 	if err != nil {
 		return "", false, err
 	}
-	var parsed ytAPIResp
-	if err := json.Unmarshal(body, &parsed); err != nil {
+	raw, ok := extractJSONObject(string(body), "ytInitialPlayerResponse")
+	if !ok {
+		return "", false, fmt.Errorf("ytInitialPlayerResponse not found")
+	}
+	var pr playerResponse
+	if err := json.Unmarshal(raw, &pr); err != nil {
 		return "", false, err
 	}
-	if len(parsed.Items) == 0 {
+	vd := pr.VideoDetails
+	mf := pr.Microformat.PlayerMicroformatRenderer
+	channel := vd.Author
+	if channel == "" {
+		channel = mf.OwnerChannelName
+	}
+	uploaded := mf.PublishDate
+	if uploaded == "" {
+		uploaded = mf.UploadDate
+	}
+	sec, _ := strconv.Atoi(vd.LengthSeconds)
+	meta := ytMeta{
+		Title:    collapseSpace(vd.Title),
+		Channel:  collapseSpace(channel),
+		Duration: formatSeconds(sec),
+		Uploaded: formatUploadDate(uploaded),
+		Views:    compactCount(vd.ViewCount),
+		Likes:    compactCount(mf.LikeCount),
+	}
+	if meta.Title == "" {
 		return "", false, nil
 	}
-	it := parsed.Items[0]
-	dur := formatISODuration(it.ContentDetails.Duration)
-	uploaded := it.Snippet.PublishedAt
-	if t, err := time.Parse(time.RFC3339, it.Snippet.PublishedAt); err == nil {
-		uploaded = t.UTC().Format("2006-01-02")
+	return meta.Format(), true, nil
+}
+
+// extractJSONObject finds `name = {...}` / `name={...}` in HTML and returns the object bytes.
+func extractJSONObject(html, name string) ([]byte, bool) {
+	idx := strings.Index(html, name)
+	if idx < 0 {
+		return nil, false
 	}
-	// Official API no longer returns dislikes — likes only.
-	return fmt.Sprintf("YouTube: %s | %s | %s | uploaded %s | likes %s",
-		it.Snippet.Title, it.Snippet.ChannelTitle, dur, uploaded, it.Statistics.LikeCount), true, nil
+	rest := html[idx+len(name):]
+	eq := strings.IndexByte(rest, '=')
+	if eq < 0 {
+		return nil, false
+	}
+	rest = rest[eq+1:]
+	rest = strings.TrimLeft(rest, " \t\r\n")
+	if rest == "" || rest[0] != '{' {
+		return nil, false
+	}
+	depth := 0
+	inStr := false
+	esc := false
+	for i := 0; i < len(rest); i++ {
+		c := rest[i]
+		if inStr {
+			if esc {
+				esc = false
+				continue
+			}
+			if c == '\\' {
+				esc = true
+				continue
+			}
+			if c == '"' {
+				inStr = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			inStr = true
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return []byte(rest[:i+1]), true
+			}
+		}
+	}
+	return nil, false
 }
 
 type oembedResp struct {
@@ -154,37 +250,64 @@ func (y *YouTube) resolveOEmbed(ctx context.Context, id string) (string, bool, e
 	if parsed.Title == "" {
 		return "", false, nil
 	}
-	return fmt.Sprintf("YouTube: %s | %s", parsed.Title, parsed.AuthorName), true, nil
+	meta := ytMeta{
+		Title:   collapseSpace(parsed.Title),
+		Channel: collapseSpace(parsed.AuthorName),
+	}
+	return meta.Format(), true, nil
 }
 
-// formatISODuration turns PT1H2M3S into 1h2m3s.
-func formatISODuration(iso string) string {
-	iso = strings.TrimPrefix(iso, "PT")
-	if iso == "" {
-		return "?"
+func formatSeconds(sec int) string {
+	if sec <= 0 {
+		return ""
 	}
-	var out strings.Builder
-	n := ""
-	for _, r := range iso {
-		if r >= '0' && r <= '9' {
-			n += string(r)
-			continue
-		}
-		if n == "" {
-			continue
-		}
-		switch r {
-		case 'H':
-			out.WriteString(n + "h")
-		case 'M':
-			out.WriteString(n + "m")
-		case 'S':
-			out.WriteString(n + "s")
-		}
-		n = ""
+	h := sec / 3600
+	m := (sec % 3600) / 60
+	s := sec % 60
+	if h > 0 {
+		return fmt.Sprintf("%dh%dm%ds", h, m, s)
 	}
-	if out.Len() == 0 {
-		return iso
+	if m > 0 {
+		return fmt.Sprintf("%dm%ds", m, s)
 	}
-	return out.String()
+	return fmt.Sprintf("%ds", s)
+}
+
+func formatUploadDate(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	formats := []string{time.RFC3339, "2006-01-02T15:04:05-07:00", "2006-01-02"}
+	for _, f := range formats {
+		if t, err := time.Parse(f, raw); err == nil {
+			return t.UTC().Format("2006-01-02")
+		}
+	}
+	if len(raw) >= 10 {
+		return raw[:10]
+	}
+	return raw
+}
+
+// compactCount turns "415854353" into "415.9M" for IRC-friendly lines.
+func compactCount(raw string) string {
+	raw = strings.TrimSpace(strings.ReplaceAll(raw, ",", ""))
+	if raw == "" {
+		return ""
+	}
+	n, err := strconv.ParseFloat(raw, 64)
+	if err != nil || n < 0 {
+		return raw
+	}
+	switch {
+	case n >= 1_000_000_000:
+		return fmt.Sprintf("%.1fB", n/1_000_000_000)
+	case n >= 1_000_000:
+		return fmt.Sprintf("%.1fM", n/1_000_000)
+	case n >= 1_000:
+		return fmt.Sprintf("%.1fK", n/1_000)
+	default:
+		return strconv.FormatInt(int64(n), 10)
+	}
 }

@@ -32,6 +32,15 @@ Clankers must **always strive to improve our standards** — not merely match wh
 - Leave the codebase a little more consistent than you found it; do not spread new one-off patterns.
 - If a standard here is wrong or incomplete, fix or extend this file rather than quietly inventing a parallel convention.
 
+### External data / APIs
+
+Prefer **public, unauthenticated sources** over registered vendor APIs and API keys.
+
+- Scraping or reading public page/JSON endpoints (watch pages, oEmbed, FxTwitter-style public APIs) is the default for resolvers and similar features.
+- Do **not** add Google / Twitter / etc. developer-console API keys, OAuth clients, or paid API SDKs unless the Meat Bag explicitly asks.
+- Keep custom/third-party API usage **minimal**. If public data already covers the need, delete or refuse the keyed API path.
+- Document fragility (HTML shape changes, rate limits) in comments and Meat Bag docs when we rely on unofficial public endpoints.
+
 ---
 
 ## Commit messages

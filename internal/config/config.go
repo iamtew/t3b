@@ -22,7 +22,6 @@ type Config struct {
 	Admins   []string `toml:"admins"`
 	Runtime  Runtime  `toml:"runtime"`
 	Resolve  Resolve  `toml:"resolve"`
-	YouTube  YouTube  `toml:"youtube"`
 	Automode Automode `toml:"automode"`
 }
 
@@ -62,11 +61,6 @@ type Resolve struct {
 	YouTube        *bool  `toml:"youtube"`
 	UserAgent      string `toml:"user_agent"`
 	HTTPTimeoutSec int    `toml:"http_timeout_sec"`
-}
-
-// YouTube holds the optional Data API v3 key.
-type YouTube struct {
-	APIKey string `toml:"api_key"`
 }
 
 // Automode keeps owner/admins opped when the bot is op.

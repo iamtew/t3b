@@ -73,7 +73,7 @@ func New(cfg *config.Config, opts Options) *Bot {
 		daemonMode: opts.Daemon,
 		auth:       h,
 		auto:       automode.New(h),
-		engine:     resolve.New(logger, cfg.Resolve, cfg.YouTube.APIKey),
+		engine:     resolve.New(logger, cfg.Resolve),
 		log:        logger,
 		started:    time.Now(),
 	}
@@ -471,7 +471,7 @@ func (b *Bot) Reload() error {
 	b.cfg = neu
 	b.auth = auth.New(neu.Owner, neu.Admins)
 	b.auto.UpdateAuth(b.auth)
-	b.engine.UpdateConfig(neu.Resolve, neu.YouTube.APIKey)
+	b.engine.UpdateConfig(neu.Resolve)
 	client := b.client
 	b.mu.Unlock()
 

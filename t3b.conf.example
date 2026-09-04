@@ -44,10 +44,5 @@ youtube = true
 user_agent = "t3b/0.1 (+https://github.com/iamtew/t3b)"
 http_timeout_sec = 8
 
-[youtube]
-# Optional YouTube Data API v3 key. Without it, oEmbed gives title + channel only.
-# Google no longer returns dislike counts — likes only.
-api_key = ""
-
 [automode]
 enabled = true

@@ -32,7 +32,6 @@ type Resolver interface {
 type Engine struct {
 	log       *log.Logger
 	cfg       config.Resolve
-	ytKey     string
 	client    *http.Client
 	resolvers []Resolver
 
@@ -41,15 +40,14 @@ type Engine struct {
 	maxPerMin int
 }
 
-// New builds an Engine from config (YouTube key optional).
-func New(logger *log.Logger, cfg config.Resolve, youtubeAPIKey string) *Engine {
+// New builds an Engine from config.
+func New(logger *log.Logger, cfg config.Resolve) *Engine {
 	if logger == nil {
 		logger = log.Default()
 	}
 	e := &Engine{
 		log:       logger,
 		cfg:       cfg,
-		ytKey:     youtubeAPIKey,
 		client:    &http.Client{Timeout: cfg.HTTPTimeout(), CheckRedirect: limitRedirects(5)},
 		rate:      make(map[string][]time.Time),
 		maxPerMin: 6,
@@ -67,12 +65,11 @@ func limitRedirects(n int) func(*http.Request, []*http.Request) error {
 	}
 }
 
-// UpdateConfig refreshes toggles / UA / timeout / API key after reload.
-func (e *Engine) UpdateConfig(cfg config.Resolve, youtubeAPIKey string) {
+// UpdateConfig refreshes toggles / UA / timeout after reload.
+func (e *Engine) UpdateConfig(cfg config.Resolve) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.cfg = cfg
-	e.ytKey = youtubeAPIKey
 	e.client.Timeout = cfg.HTTPTimeout()
 	e.rebuildLocked()
 }
@@ -90,7 +87,7 @@ func (e *Engine) rebuildLocked() {
 		e.resolvers = append(e.resolvers, &Twitter{client: e.client, ua: e.cfg.UserAgent})
 	}
 	if e.cfg.YouTubeOn() {
-		e.resolvers = append(e.resolvers, &YouTube{client: e.client, ua: e.cfg.UserAgent, apiKey: e.ytKey, log: e.log})
+		e.resolvers = append(e.resolvers, &YouTube{client: e.client, ua: e.cfg.UserAgent, log: e.log})
 	}
 	if e.cfg.URLTitlesOn() {
 		e.resolvers = append(e.resolvers, &URLTitle{client: e.client, ua: e.cfg.UserAgent})
