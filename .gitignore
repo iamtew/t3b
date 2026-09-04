@@ -1,0 +1,19 @@
+# Built binaries (Windows and Unix names)
+/t3b
+/t3b.exe
+/bin/
+
+# Local runtime config — Meat Bags copy from t3b.conf.example
+/t3b.conf
+
+# Go
+*.test
+*.out
+coverage.out
+
+# IDE / editor noise
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store

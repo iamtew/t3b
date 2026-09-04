@@ -22,3 +22,24 @@ User-facing documentation lives in [README.md](README.md).
 - Always ensure code has comments, for the 'Meat Bags' to understand what we're doing.
 
 ---
+
+## Commit messages
+
+Clankers writing commits must follow this shape unless the Meat Bag asks otherwise:
+
+- **Subject:** short, punchy, and allowed to be a little funny. One line. Say *why* this landed, not a dull file inventory.
+- **Body:** a bullet list of what the commit actually contains (packages, behaviors, stubs, docs). Keep bullets concrete and skimmable.
+- Separate subject and body with a blank line. No trailer spam unless the Meat Bag wants it.
+
+Example:
+
+```
+Wire up the bot before the network notices
+
+- Go module, Justfile, and .gitignore
+- TOML config load/validate + example conf
+- Foreground IRC connect/join/log + Ctrl+C quit
+- Hostmask auth helpers; daemon/SASL CLI stubs
+```
+
+---

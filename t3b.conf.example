@@ -1,0 +1,36 @@
+# Example t3b config. Meat Bags: copy to t3b.conf and fill in real values.
+# Default path is $PWD/t3b.conf; override with: t3b -config /path/to/file
+#
+# Top-level keys must come before [tables] — otherwise TOML nests them wrongly.
+
+# One network only; join as many channels as you need.
+channels = ["#t3b"]
+
+# Hostmasks look like: nick!~user@host.name
+owner = "tew!~tew@example.host"
+admins = [
+  # "admin!~admin@example.host",
+]
+
+[server]
+host = "irc.example.net"
+port = 6697
+tls = true
+# Set true only for lab/self-signed nets — never on production networks.
+tls_skip_verify = false
+
+[identity]
+nick = "t3b"
+user = "t3b"
+realname = "tew's irc bot"
+
+# SASL is parsed and reserved; live auth is not wired yet (see internal/bot).
+[sasl]
+enabled = false
+mechanism = "PLAIN"
+user = ""
+password = ""
+
+[runtime]
+# Reserved for daemon IPC (Unix socket / named pipe). Unused until -daemon works.
+socket_path = ""
