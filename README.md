@@ -20,8 +20,11 @@ IRC bot written in Go. Built with Clankers; operated by Meat Bags.
 - URL titles when an `http(s)` link is pasted in a channel
 - Twitter / X: tweet text, timestamp, retweets, replies, likes, media links
 - YouTube: Data API v3 for title, channel, duration, upload date, views, likes when `youtube_api_key` is set (plain page title if the key is omitted)
+- Reddit: Arctic Shift archive + oEmbed fallback (title, subreddit, author, score, date, comments when available)
+- Link log: every successfully resolved URL is appended as JSONL beside the config file (`links-{identity.nick}-{server.host}.log`)
+- Public channel (and DM) link search: `.link` / `.l`, pagination with `.more` / `.m` — no ACL
 - Automode: while the bot is op, keep owner and admins opped
-- Config and behavior commands in a **direct message** to the bot (not in channel)
+- Config and behavior commands in a **direct message** to the bot (admin/owner only; not in channel)
 - Admin: `.join #channel`, `.leave #channel`, `.op nick #channel`, `.deop nick #channel`
 - Owner: `.stop`, `.restart`, `.reload`
 
@@ -77,6 +80,22 @@ With a non-standard config name (e.g. `bot.t3b.conf`), the default pidfile is `$
 - Twitter / X via [FxTwitter](https://api.fxtwitter.com)-style JSON (no OAuth)
 - YouTube: [Data API v3](https://developers.google.com/youtube/v3) `videos.list` when `[resolve] youtube_api_key` is set (title, channel, duration, upload date, views, likes; 1 quota unit). No key → generic URL title like any other link. Do not commit the key.
 - Reddit: [Arctic Shift](https://arctic-shift.photon-reddit.com) public archive JSON first (title, subreddit, author, score, date, comments), then Reddit [oEmbed](https://www.reddit.com/oembed) fallback (title/author). No API key. Reddit’s own HTML/`.json` often 403 from datacenter IPs; public downvote counts are not available. Archive may lag brand-new posts; oEmbed can also block some VPS ASNs — smoke-test from the host if Reddit replies stay empty.
+- On each successful resolve, t3b appends one JSON line to `links-{nick}-{host}.log` next to the config file (`id`, `datetime`, `channel`, `user`, `domain`, `URL`, `title` — `title` is the full bot reply string, including YouTube/X/Reddit extras)
+
+### Public link commands
+
+Anyone may run these in a channel or in a DM (replies go where the command was sent):
+
+| Command | Meaning |
+| -------- | ------- |
+| `.link` / `.l` | Totals (links + unique domains) and subcommand list |
+| `.link search <q>` / `.l s <q>` | Case-insensitive search in domain, URL, and title |
+| `.link <id>` | One entry by log id |
+| `.link last` / `.l l` | Last 3 links |
+| `.link last <n>` | Last *n* links (still paged 3 at a time) |
+| `.more` / `.m` | Next page of 3 after search/last |
+
+When a search or `last` returns more than 3 hits, t3b prints three lines plus `Showing X-Y of Z. Send .more or .m for next.`
 
 ### Privileged DM commands
 

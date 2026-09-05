@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -16,10 +17,17 @@ import (
 	"github.com/iamtew/t3b/internal/automode"
 	"github.com/iamtew/t3b/internal/commands"
 	"github.com/iamtew/t3b/internal/config"
+	"github.com/iamtew/t3b/internal/linklog"
 	"github.com/iamtew/t3b/internal/resolve"
 	"github.com/iamtew/t3b/internal/version"
 	"github.com/lrstanley/girc"
 )
+
+// pageSession holds remaining .link / .more results for one nick.
+type pageSession struct {
+	entries []linklog.Entry
+	offset  int
+}
 
 // Status is the snapshot returned by Status() / daemon status.
 type Status struct {
@@ -44,6 +52,11 @@ type Bot struct {
 	auth   auth.Hostmasks
 	auto   *automode.Tracker
 	engine *resolve.Engine
+	links  *linklog.Store
+
+	// Per-nick .more pagination for public link search.
+	pageMu sync.Mutex
+	pages  map[string]*pageSession
 
 	client *girc.Client
 
@@ -77,8 +90,32 @@ func New(cfg *config.Config, opts Options) *Bot {
 		engine:     resolve.New(logger, cfg.Resolve),
 		log:        logger,
 		started:    time.Now(),
+		pages:      make(map[string]*pageSession),
 	}
+	b.openLinkLog(cfg)
 	return b
+}
+
+// openLinkLog opens (or reopens) the JSONL beside the config file.
+func (b *Bot) openLinkLog(cfg *config.Config) {
+	path := b.configPath
+	if path == "" {
+		path = config.DefaultPath
+	}
+	logPath := linklog.PathFor(path, cfg.Identity.Nick, cfg.Server.Host)
+	store, err := linklog.Open(logPath)
+	if err != nil {
+		b.log.Printf("linklog open %s: %v", logPath, err)
+		return
+	}
+	b.mu.Lock()
+	old := b.links
+	b.links = store
+	b.mu.Unlock()
+	if old != nil {
+		_ = old.Close()
+	}
+	b.log.Printf("linklog %s", filepath.Base(logPath))
 }
 
 // Auth exposes hostmask helpers.
@@ -262,8 +299,10 @@ func (b *Bot) registerHandlers(client *girc.Client) {
 			target = e.Params[0]
 		}
 		from := ""
+		nick := ""
 		if e.Source != nil {
 			from = e.Source.String()
+			nick = e.Source.Name
 		}
 		text := e.Last()
 		// Own PRIVMSG is logged in sendPRIVMSG; many nets never echo it back.
@@ -273,22 +312,14 @@ func (b *Bot) registerHandlers(client *girc.Client) {
 		b.log.Printf("PRIVMSG %s <%s> %s", target, from, text)
 
 		if girc.IsValidChannel(target) {
-			b.handleChannelPRIVMSG(c, target, text)
+			b.handleChannelPRIVMSG(c, target, nick, from, text)
 			return
 		}
-		// DM to bot — privileged commands only.
+		// DM to bot — privileged + public commands.
 		if e.Source == nil {
 			return
 		}
-		reply, err := commands.Dispatch(b.Auth(), from, text, b)
-		if err != nil {
-			b.log.Printf("command error: %v", err)
-			b.sendPRIVMSG(c, e.Source.Name, "error: "+err.Error())
-			return
-		}
-		if reply != "" {
-			b.sendPRIVMSG(c, e.Source.Name, reply)
-		}
+		b.dispatchCommand(c, e.Source.Name, from, nick, text)
 	})
 
 	client.Handlers.Add(girc.CLOSED, func(_ *girc.Client, _ girc.Event) {
@@ -300,12 +331,45 @@ func (b *Bot) registerHandlers(client *girc.Client) {
 	})
 }
 
-func (b *Bot) handleChannelPRIVMSG(c *girc.Client, channel, text string) {
+func (b *Bot) handleChannelPRIVMSG(c *girc.Client, channel, nick, mask, text string) {
+	// Public .link / .more in-channel; never run admin/owner cmds here.
+	if name, _, ok := commands.Parse(text); ok && commands.IsPublic(name) {
+		b.dispatchCommand(c, channel, mask, nick, text)
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), b.Config().Resolve.HTTPTimeout()+2*time.Second)
 	defer cancel()
 	reply := b.engine.HandleMessage(ctx, channel, text)
-	if reply != "" {
-		b.sendPRIVMSG(c, channel, reply)
+	if reply == "" {
+		return
+	}
+	rawURL := resolve.FirstURL(text)
+	if rawURL != "" {
+		b.mu.Lock()
+		store := b.links
+		b.mu.Unlock()
+		if store != nil {
+			if _, err := store.Append(channel, nick, rawURL, reply); err != nil {
+				b.log.Printf("linklog append: %v", err)
+			}
+		}
+	}
+	b.sendPRIVMSG(c, channel, reply)
+}
+
+// dispatchCommand runs commands.Dispatch and sends each reply line to target.
+func (b *Bot) dispatchCommand(c *girc.Client, target, mask, nick, text string) {
+	lines, err := commands.Dispatch(b.Auth(), mask, nick, text, b)
+	if err != nil {
+		b.log.Printf("command error: %v", err)
+		b.sendPRIVMSG(c, target, "error: "+err.Error())
+		return
+	}
+	for _, line := range lines {
+		if line != "" {
+			b.sendPRIVMSG(c, target, line)
+		}
 	}
 }
 
@@ -485,6 +549,13 @@ func (b *Bot) Reload() error {
 	client := b.client
 	b.mu.Unlock()
 
+	// Reopen link log if nick/host (or path) would change the filename.
+	oldPath := linklog.PathFor(path, old.Identity.Nick, old.Server.Host)
+	newPath := linklog.PathFor(path, neu.Identity.Nick, neu.Server.Host)
+	if oldPath != newPath {
+		b.openLinkLog(neu)
+	}
+
 	if needReconnect {
 		b.log.Println("reload: cold settings changed — restarting IRC")
 		return b.Restart()
@@ -548,6 +619,85 @@ func (b *Bot) StatusText() string {
 	s := b.Status()
 	return fmt.Sprintf("up %s | %s as %s | chans %s | daemon=%v",
 		s.Uptime, s.Server, s.Nick, strings.Join(s.Channels, ","), s.Daemon)
+}
+
+func (b *Bot) linkStore() (*linklog.Store, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.links == nil {
+		return nil, fmt.Errorf("not open")
+	}
+	return b.links, nil
+}
+
+// LinkStats implements commands.IRC.
+func (b *Bot) LinkStats() (linklog.Stats, error) {
+	s, err := b.linkStore()
+	if err != nil {
+		return linklog.Stats{}, err
+	}
+	return s.Stats(), nil
+}
+
+// LinkByID implements commands.IRC.
+func (b *Bot) LinkByID(id int) (linklog.Entry, bool, error) {
+	s, err := b.linkStore()
+	if err != nil {
+		return linklog.Entry{}, false, err
+	}
+	e, ok := s.ByID(id)
+	return e, ok, nil
+}
+
+// LinkLast implements commands.IRC.
+func (b *Bot) LinkLast(n int) ([]linklog.Entry, error) {
+	s, err := b.linkStore()
+	if err != nil {
+		return nil, err
+	}
+	return s.Last(n), nil
+}
+
+// LinkSearch implements commands.IRC.
+func (b *Bot) LinkSearch(q string) ([]linklog.Entry, error) {
+	s, err := b.linkStore()
+	if err != nil {
+		return nil, err
+	}
+	return s.Search(q), nil
+}
+
+// LinkStartPage implements commands.IRC — stores pagination and returns the first page.
+func (b *Bot) LinkStartPage(nick string, entries []linklog.Entry) []string {
+	lines, next, hasMore := linklog.FormatPage(entries, 0)
+	key := strings.ToLower(nick)
+	b.pageMu.Lock()
+	if hasMore {
+		b.pages[key] = &pageSession{entries: entries, offset: next}
+	} else {
+		delete(b.pages, key)
+	}
+	b.pageMu.Unlock()
+	return lines
+}
+
+// LinkMore implements commands.IRC — next page for nick, or nil if none.
+func (b *Bot) LinkMore(nick string) []string {
+	key := strings.ToLower(nick)
+	b.pageMu.Lock()
+	sess := b.pages[key]
+	if sess == nil {
+		b.pageMu.Unlock()
+		return nil
+	}
+	lines, next, hasMore := linklog.FormatPage(sess.entries, sess.offset)
+	if hasMore {
+		sess.offset = next
+	} else {
+		delete(b.pages, key)
+	}
+	b.pageMu.Unlock()
+	return lines
 }
 
 func appendUnique(list []string, ch string) []string {
