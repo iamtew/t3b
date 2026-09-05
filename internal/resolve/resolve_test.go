@@ -13,8 +13,36 @@ import (
 )
 
 func TestFirstURL(t *testing.T) {
-	got := FirstURL("see https://example.com/page. and more")
-	if got != "https://example.com/page" {
+	cases := []struct {
+		in, want string
+	}{
+		{"https://example.com/page", "https://example.com/page"},
+		{"see https://example.com/page. and more", "https://example.com/page"},
+		{"https://example.com/page is cool", "https://example.com/page"},
+		{"prefix https://example.com/page suffix", "https://example.com/page"},
+		{"look <https://example.com/page>", "https://example.com/page"},
+		{"https://example.com/page.", "https://example.com/page"},
+		// Clients wrap inline links with mIRC attributes; strip before match.
+		{"see \x1fhttps://example.com/page\x1f please", "https://example.com/page"},
+		{"\x02https://example.com/page\x02 trailing", "https://example.com/page"},
+		{"mid \x0304https://example.com/page\x03 text", "https://example.com/page"},
+		{"mid \x0312,01https://example.com/page\x0f text", "https://example.com/page"},
+		{"zw\u200bhttps://example.com/page more", "https://example.com/page"},
+		{"no link here", ""},
+		{"www.example.com/page", ""}, // scheme required
+	}
+	for _, tc := range cases {
+		got := FirstURL(tc.in)
+		if got != tc.want {
+			t.Errorf("FirstURL(%q)=%q want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestStripIRCFormatting(t *testing.T) {
+	in := "a\x02b\x1fc\x0304d\x03e"
+	got := stripIRCFormatting(in)
+	if got != "abcde" {
 		t.Fatalf("got %q", got)
 	}
 }

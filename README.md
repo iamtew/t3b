@@ -73,7 +73,7 @@ Override under `[runtime]` in the config (`socket_path`, `pid_path`).
 
 ### Resolvers
 
-- Channel messages only; first `http(s)` URL per line; fetch failures are logged, not spammed to IRC
+- Channel messages only; first `http(s)` URL anywhere in the line; fetch failures are logged, not spammed to IRC
 - Twitter / X via [FxTwitter](https://api.fxtwitter.com)-style JSON (no OAuth)
 - YouTube: [Data API v3](https://developers.google.com/youtube/v3) `videos.list` when `[resolve] youtube_api_key` is set (title, channel, duration, upload date, views, likes; 1 quota unit). No key → generic URL title like any other link. Do not commit the key.
 

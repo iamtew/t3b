@@ -105,6 +105,7 @@ func (e *Engine) HandleMessage(ctx context.Context, channel, text string) string
 	}
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		e.log.Printf("resolve skip %s: bad URL", raw)
 		return ""
 	}
 	if !e.allow(channel) {
@@ -115,19 +116,25 @@ func (e *Engine) HandleMessage(ctx context.Context, channel, text string) string
 	resolvers := append([]Resolver(nil), e.resolvers...)
 	e.mu.Unlock()
 
+	matched := false
 	for _, r := range resolvers {
 		if !r.Match(u) {
 			continue
 		}
+		matched = true
 		reply, ok, err := r.Resolve(ctx, u)
 		if err != nil {
 			e.log.Printf("resolve %s: %v", raw, err)
 			return ""
 		}
 		if !ok || reply == "" {
+			e.log.Printf("resolve skip %s: no title", raw)
 			return ""
 		}
 		return TrimIRC(reply)
+	}
+	if !matched {
+		e.log.Printf("resolve skip %s: no matching resolver", raw)
 	}
 	return ""
 }
@@ -153,12 +160,82 @@ func (e *Engine) allow(channel string) bool {
 }
 
 // FirstURL returns the first http(s) URL in text, trimming trailing punctuation.
+// IRC formatting codes and zero-width junk are stripped first so inline links
+// wrapped by clients (underline, color, bold) still match.
 func FirstURL(text string) string {
-	m := urlRe.FindString(text)
+	m := urlRe.FindString(stripIRCFormatting(text))
 	if m == "" {
 		return ""
 	}
 	return strings.TrimRight(m, ".,);]!?")
+}
+
+// stripIRCFormatting removes mIRC/IRC attribute bytes and invisible paste junk
+// so URL extraction sees the same bytes Meat Bags intend to share.
+func stripIRCFormatting(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); {
+		c := s[i]
+		switch c {
+		case 0x02, 0x0f, 0x16, 0x1d, 0x1e, 0x1f, 0x11: // bold, reset, reverse, italic, strike, underline, monospace
+			i++
+			continue
+		case 0x03: // color: \x03[[fg][,bg]] with 1–2 digit codes
+			i++
+			i += ircColorDigits(s[i:])
+			if i < len(s) && s[i] == ',' {
+				i++
+				i += ircColorDigits(s[i:])
+			}
+			continue
+		case 0x04: // hex color (Irssi / modern clients): drop code + following hex run
+			i++
+			for i < len(s) && isHexByte(s[i]) {
+				i++
+			}
+			if i < len(s) && s[i] == ',' {
+				i++
+				for i < len(s) && isHexByte(s[i]) {
+					i++
+				}
+			}
+			continue
+		}
+		// Drop BOM / zero-width chars that hitch a ride on pasted links.
+		if c == 0xef && i+2 < len(s) && s[i+1] == 0xbb && s[i+2] == 0xbf { // UTF-8 BOM
+			i += 3
+			continue
+		}
+		if c == 0xe2 && i+2 < len(s) {
+			// U+200B ZWSP, U+200C ZWNJ, U+200D ZWJ, U+2060 WJ (UTF-8 e2 80 8b–8d / e2 81 a0)
+			b2, b3 := s[i+1], s[i+2]
+			if b2 == 0x80 && (b3 == 0x8b || b3 == 0x8c || b3 == 0x8d) {
+				i += 3
+				continue
+			}
+			if b2 == 0x81 && b3 == 0xa0 {
+				i += 3
+				continue
+			}
+		}
+		b.WriteByte(c)
+		i++
+	}
+	return b.String()
+}
+
+// ircColorDigits consumes up to two ASCII digits for an IRC color code.
+func ircColorDigits(s string) int {
+	n := 0
+	for n < len(s) && n < 2 && s[n] >= '0' && s[n] <= '9' {
+		n++
+	}
+	return n
+}
+
+func isHexByte(c byte) bool {
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
 }
 
 // TrimIRC truncates a reply to MaxIRCLine runes-ish (byte-safe cut).
