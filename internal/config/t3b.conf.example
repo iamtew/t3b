@@ -1,5 +1,6 @@
 # Example t3b config. Meat Bags: edit real values before connecting.
 # Write a fresh copy with: t3b -config_write   (or: t3b -config_write mybot.conf)
+# After upgrades: t3b check config   /   t3b check config -write
 # Default pickup: any file in $PWD ending with t3b.conf (exactly one). Override: t3b -config path
 #
 # Top-level keys must come before [tables] — otherwise TOML nests them wrongly.
@@ -47,8 +48,9 @@ reddit = true
 # youtube_api_key = ""
 # Reddit: Arctic Shift archive (score/date/sub) + oEmbed fallback. No API key.
 # Reddit HTML/.json often 403 from datacenter IPs; downs are not public.
-# Omit user_agent to use the binary build version (t3b/<hash or tag-hash>).
-# user_agent = "t3b/custom (+https://example.com)"
+# Omit user_agent for Mozilla-compatible default (t3b/<hash>). Some CDNs block
+# bare product UAs; override here if a site still returns 403 / empty titles.
+# user_agent = "Mozilla/5.0 (compatible; t3b/custom; +https://example.com)"
 http_timeout_sec = 8
 
 [automode]

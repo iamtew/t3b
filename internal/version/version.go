@@ -53,7 +53,9 @@ func CTCP() string {
 	return fmt.Sprintf("t3b %s (github.com/iamtew/t3b)", Version)
 }
 
-// UserAgent is the default HTTP User-Agent product token.
+// UserAgent is the default HTTP User-Agent for resolvers.
+// Mozilla-compatible bot form so CDNs (e.g. CloudFront on state.gov) that
+// reject bare product tokens still serve real HTML; still identifies t3b.
 func UserAgent() string {
-	return fmt.Sprintf("t3b/%s (+https://github.com/iamtew/t3b)", Version)
+	return fmt.Sprintf("Mozilla/5.0 (compatible; t3b/%s; +https://github.com/iamtew/t3b)", Version)
 }

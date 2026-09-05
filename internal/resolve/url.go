@@ -40,6 +40,13 @@ func (u *URLTitle) Resolve(ctx context.Context, raw *url.URL) (string, bool, err
 	}
 	defer resp.Body.Close()
 
+	// Non-2xx often means a WAF/CDN error page with a misleading <title>
+	// (e.g. CloudFront "Technical Difficulties"). Do not announce those.
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxBody))
+		return "", false, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
 	ct := strings.ToLower(resp.Header.Get("Content-Type"))
 	if ct != "" && !strings.Contains(ct, "html") && !strings.Contains(ct, "text/") && !strings.Contains(ct, "xml") {
 		return "", false, nil

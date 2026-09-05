@@ -62,6 +62,26 @@ func TestURLTitle(t *testing.T) {
 	}
 }
 
+// WAF/CDN error pages often have a real <title>; we must not announce those.
+func TestURLTitleNon2xx(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`<html><head><title>Technical Difficulties</title></head></html>`))
+	}))
+	defer srv.Close()
+
+	u, _ := url.Parse(srv.URL)
+	r := &URLTitle{client: srv.Client(), ua: "t3b-test"}
+	reply, ok, err := r.Resolve(context.Background(), u)
+	if ok || reply != "" {
+		t.Fatalf("expected skip, got reply=%q ok=%v", reply, ok)
+	}
+	if err == nil || !strings.Contains(err.Error(), "HTTP 403") {
+		t.Fatalf("expected HTTP 403 error, got %v", err)
+	}
+}
+
 func TestTwitterMatch(t *testing.T) {
 	tr := &Twitter{}
 	u, _ := url.Parse("https://x.com/someone/status/1234567890")
