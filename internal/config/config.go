@@ -61,6 +61,7 @@ type Resolve struct {
 	Twitter        *bool  `toml:"twitter"`
 	YouTube        *bool  `toml:"youtube"`
 	YouTubeAPIKey  string `toml:"youtube_api_key"` // Data API v3; empty → generic URL title
+	Reddit         *bool  `toml:"reddit"`
 	UserAgent      string `toml:"user_agent"`
 	HTTPTimeoutSec int    `toml:"http_timeout_sec"`
 }
@@ -111,6 +112,9 @@ func (c *Config) applyDefaults() {
 	if c.Resolve.YouTube == nil {
 		c.Resolve.YouTube = boolPtr(true)
 	}
+	if c.Resolve.Reddit == nil {
+		c.Resolve.Reddit = boolPtr(true)
+	}
 	c.Resolve.YouTubeAPIKey = strings.TrimSpace(c.Resolve.YouTubeAPIKey)
 	if c.Automode.Enabled == nil {
 		c.Automode.Enabled = boolPtr(true)
@@ -132,6 +136,9 @@ func (r Resolve) TwitterOn() bool { return r.Twitter == nil || *r.Twitter }
 
 // YouTubeOn reports whether YouTube resolution is enabled.
 func (r Resolve) YouTubeOn() bool { return r.YouTube == nil || *r.YouTube }
+
+// RedditOn reports whether Reddit resolution is enabled.
+func (r Resolve) RedditOn() bool { return r.Reddit == nil || *r.Reddit }
 
 // AutomodeOn reports whether automode is enabled (default true).
 func (a Automode) AutomodeOn() bool { return a.Enabled == nil || *a.Enabled }

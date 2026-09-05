@@ -36,7 +36,7 @@ realname = "bot"
 	if cfg.Server.Address() != "irc.example.net:6697" {
 		t.Fatalf("Address = %q", cfg.Server.Address())
 	}
-	if !cfg.Resolve.URLTitlesOn() || !cfg.Automode.AutomodeOn() {
+	if !cfg.Resolve.URLTitlesOn() || !cfg.Resolve.RedditOn() || !cfg.Automode.AutomodeOn() {
 		t.Fatal("expected resolve/automode defaults on")
 	}
 }
@@ -118,6 +118,7 @@ realname = "bot"
 url_titles = false
 twitter = false
 youtube = false
+reddit = false
 
 [automode]
 enabled = false
@@ -129,7 +130,7 @@ enabled = false
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Resolve.URLTitlesOn() || cfg.Resolve.TwitterOn() || cfg.Resolve.YouTubeOn() {
+	if cfg.Resolve.URLTitlesOn() || cfg.Resolve.TwitterOn() || cfg.Resolve.YouTubeOn() || cfg.Resolve.RedditOn() {
 		t.Fatal("expected resolve toggles off")
 	}
 	if cfg.Automode.AutomodeOn() {

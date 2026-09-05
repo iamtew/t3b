@@ -76,6 +76,7 @@ With a non-standard config name (e.g. `bot.t3b.conf`), the default pidfile is `$
 - Channel messages only; first `http(s)` URL anywhere in the line; fetch failures are logged, not spammed to IRC
 - Twitter / X via [FxTwitter](https://api.fxtwitter.com)-style JSON (no OAuth)
 - YouTube: [Data API v3](https://developers.google.com/youtube/v3) `videos.list` when `[resolve] youtube_api_key` is set (title, channel, duration, upload date, views, likes; 1 quota unit). No key → generic URL title like any other link. Do not commit the key.
+- Reddit: [Arctic Shift](https://arctic-shift.photon-reddit.com) public archive JSON first (title, subreddit, author, score, date, comments), then Reddit [oEmbed](https://www.reddit.com/oembed) fallback (title/author). No API key. Reddit’s own HTML/`.json` often 403 from datacenter IPs; public downvote counts are not available. Archive may lag brand-new posts; oEmbed can also block some VPS ASNs — smoke-test from the host if Reddit replies stay empty.
 
 ### Privileged DM commands
 

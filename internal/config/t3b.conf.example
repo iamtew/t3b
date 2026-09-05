@@ -42,8 +42,11 @@ pid_path = ""
 url_titles = true
 twitter = true
 youtube = true
+reddit = true
 # Data API v3 key (YouTube Data API). Empty → YouTube links get a plain page title.
 # youtube_api_key = ""
+# Reddit: Arctic Shift archive (score/date/sub) + oEmbed fallback. No API key.
+# Reddit HTML/.json often 403 from datacenter IPs; downs are not public.
 # Omit user_agent to use the binary build version (t3b/<hash or tag-hash>).
 # user_agent = "t3b/custom (+https://example.com)"
 http_timeout_sec = 8

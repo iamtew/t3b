@@ -276,3 +276,179 @@ func TestFormatSeconds(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+const arcticPostJSON = `{"data":[{"title":"Intel Arc Pro B70 - 84.65 tok/s","author":"Free_Moose9611","subreddit":"IntelArc","score":148,"num_comments":34,"created_utc":1788481371}]}`
+
+const redditOEmbedJSON = `{"title":"Intel Arc Pro B70 - 84.65 tok/s with Qwen3.8-27B using vLLM XPU + MTP4","author_name":"Free_Moose9611","provider_name":"reddit","type":"rich"}`
+
+func TestRedditMatch(t *testing.T) {
+	r := &Reddit{}
+	cases := []struct {
+		raw  string
+		want bool
+	}{
+		{"https://www.reddit.com/r/IntelArc/comments/1w6ozxy/intel_arc_pro_b70/", true},
+		{"https://reddit.com/r/IntelArc/comments/1w6ozxy/", true},
+		{"https://old.reddit.com/r/IntelArc/comments/1w6ozxy/foo/", true},
+		{"https://www.reddit.com/comments/1w6ozxy/", true},
+		{"https://redd.it/1w6ozxy", true},
+		{"https://www.reddit.com/r/IntelArc/", false},
+		{"https://example.com/r/foo/comments/1w6ozxy/", false},
+		{"https://www.reddit.com/user/someone/", false},
+	}
+	for _, tc := range cases {
+		u, err := url.Parse(tc.raw)
+		if err != nil {
+			t.Fatalf("parse %q: %v", tc.raw, err)
+		}
+		if got := r.Match(u); got != tc.want {
+			t.Errorf("Match(%q)=%v want %v", tc.raw, got, tc.want)
+		}
+	}
+}
+
+func TestRedditArctic(t *testing.T) {
+	var hitArctic, hitOEmbed bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/api/posts/ids"):
+			hitArctic = true
+			if r.URL.Query().Get("ids") != "1w6ozxy" {
+				t.Errorf("ids=%q", r.URL.Query().Get("ids"))
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(arcticPostJSON))
+		case strings.Contains(r.URL.Path, "/oembed"):
+			hitOEmbed = true
+			http.Error(w, "should not call oembed", http.StatusTeapot)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	rd := &Reddit{
+		ua: "t3b-test",
+		client: &http.Client{
+			Transport: rewriteToTestServer(srv),
+		},
+	}
+	u, _ := url.Parse("https://www.reddit.com/r/IntelArc/comments/1w6ozxy/intel_arc_pro_b70/")
+	reply, ok, err := rd.Resolve(context.Background(), u)
+	if err != nil || !ok {
+		t.Fatalf("ok=%v err=%v reply=%q", ok, err, reply)
+	}
+	for _, want := range []string{
+		"Reddit:", "Intel Arc Pro B70", "r/IntelArc", "u/Free_Moose9611",
+		"148 score", "2026-09-04", "34 comments",
+	} {
+		if !strings.Contains(reply, want) {
+			t.Fatalf("missing %q in %q", want, reply)
+		}
+	}
+	if !hitArctic || hitOEmbed {
+		t.Fatalf("arctic=%v oembed=%v", hitArctic, hitOEmbed)
+	}
+}
+
+func TestRedditOEmbedFallback(t *testing.T) {
+	var hitArctic, hitOEmbed bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/api/posts/ids"):
+			hitArctic = true
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[]}`))
+		case strings.Contains(r.URL.Path, "/oembed"):
+			hitOEmbed = true
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(redditOEmbedJSON))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	rd := &Reddit{
+		ua:     "t3b-test",
+		client: &http.Client{Transport: rewriteToTestServer(srv)},
+	}
+	u, _ := url.Parse("https://www.reddit.com/r/IntelArc/comments/1w6ozxy/slug/")
+	reply, ok, err := rd.Resolve(context.Background(), u)
+	if err != nil || !ok {
+		t.Fatalf("ok=%v err=%v reply=%q", ok, err, reply)
+	}
+	for _, want := range []string{"Reddit:", "Intel Arc Pro B70", "r/IntelArc", "u/Free_Moose9611"} {
+		if !strings.Contains(reply, want) {
+			t.Fatalf("missing %q in %q", want, reply)
+		}
+	}
+	if strings.Contains(reply, "score") || strings.Contains(reply, "comments") {
+		t.Fatalf("oembed fallback should omit score/comments: %q", reply)
+	}
+	if !hitArctic || !hitOEmbed {
+		t.Fatalf("arctic=%v oembed=%v", hitArctic, hitOEmbed)
+	}
+}
+
+func TestRedditBothFail(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/api/posts/ids"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[]}`))
+		case strings.Contains(r.URL.Path, "/oembed"):
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`Blocked`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	rd := &Reddit{
+		ua:     "t3b-test",
+		client: &http.Client{Transport: rewriteToTestServer(srv)},
+	}
+	u, _ := url.Parse("https://www.reddit.com/r/IntelArc/comments/1w6ozxy/")
+	reply, ok, err := rd.Resolve(context.Background(), u)
+	if ok || reply != "" {
+		t.Fatalf("ok=%v reply=%q", ok, reply)
+	}
+	if err == nil || !strings.Contains(err.Error(), "oembed") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestRedditBeatsURLTitle(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/api/posts/ids"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(arcticPostJSON))
+		default:
+			// Generic HTML shell — what Reddit serves bots.
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = w.Write([]byte(`<html><head><title>Reddit</title></head></html>`))
+		}
+	}))
+	defer srv.Close()
+
+	on := true
+	e := New(nil, config.Resolve{
+		Reddit:         &on,
+		URLTitles:      &on,
+		UserAgent:      "t3b-test",
+		HTTPTimeoutSec: 5,
+	})
+	e.client.Transport = rewriteToTestServer(srv)
+	reply := e.HandleMessage(context.Background(), "#chan",
+		"see https://www.reddit.com/r/IntelArc/comments/1w6ozxy/intel_arc_pro_b70/")
+	if !strings.Contains(reply, "Reddit:") || !strings.Contains(reply, "148 score") {
+		t.Fatalf("reply=%q", reply)
+	}
+	if strings.Contains(reply, "Title: Reddit") {
+		t.Fatalf("URLTitle should not win: %q", reply)
+	}
+}
+
