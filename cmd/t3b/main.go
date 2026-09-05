@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/iamtew/t3b/internal/bot"
@@ -18,6 +19,66 @@ import (
 
 func main() {
 	os.Exit(run(os.Args[1:]))
+}
+
+// runCheckConfig handles `t3b check config [-write]` — compare conf to the
+// embedded example and optionally merge missing keys without clobbering values.
+func runCheckConfig(configPath string, args []string) int {
+	if len(args) == 0 || args[0] != "config" {
+		fmt.Fprintf(os.Stderr, "t3b: usage: t3b check config [-write]\n")
+		return 2
+	}
+	write := false
+	for _, a := range args[1:] {
+		switch a {
+		case "-write", "--write":
+			write = true
+		default:
+			fmt.Fprintf(os.Stderr, "t3b: unknown check config argument %q\n", a)
+			return 2
+		}
+	}
+
+	if write {
+		added, err := config.MergeMissing(configPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "t3b: %v\n", err)
+			return 1
+		}
+		if len(added) == 0 {
+			fmt.Fprintf(os.Stderr, "t3b: %s — already up to date with example keys\n", configPath)
+		} else {
+			fmt.Fprintf(os.Stderr, "t3b: %s — added %d key(s): %s\n", configPath, len(added), strings.Join(added, ", "))
+		}
+	}
+
+	rep, err := config.Check(configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "t3b: %v\n", err)
+		return 1
+	}
+	fmt.Fprintf(os.Stderr, "t3b: check config %s\n", rep.Path)
+	if rep.Valid {
+		fmt.Fprintf(os.Stderr, "  validate: ok\n")
+	} else {
+		fmt.Fprintf(os.Stderr, "  validate: FAIL — %s\n", rep.LoadErr)
+	}
+	if len(rep.Missing) == 0 {
+		fmt.Fprintf(os.Stderr, "  missing keys: none\n")
+	} else {
+		fmt.Fprintf(os.Stderr, "  missing keys (%d): %s\n", len(rep.Missing), strings.Join(rep.Missing, ", "))
+		if !write {
+			fmt.Fprintf(os.Stderr, "  tip: t3b check config -write  (merges missing keys from the example)\n")
+		}
+	}
+	if len(rep.Unknown) > 0 {
+		fmt.Fprintf(os.Stderr, "  unknown keys (%d): %s\n", len(rep.Unknown), strings.Join(rep.Unknown, ", "))
+	}
+	if rep.OK() {
+		fmt.Fprintf(os.Stderr, "t3b: config is up to date\n")
+		return 0
+	}
+	return 1
 }
 
 // configWriteFlag supports -config_write and -config_write=path (IsBoolFlag).
@@ -121,6 +182,11 @@ func run(args []string) int {
 			return 1
 		}
 		resolved = path
+	}
+
+	// Offline schema check: t3b check config [-write]
+	if len(rest) > 0 && rest[0] == "check" {
+		return runCheckConfig(resolved, rest[1:])
 	}
 
 	// CLI router: t3b status | restart | stop | reload → talk to running instance.
