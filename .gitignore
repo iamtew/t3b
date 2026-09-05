@@ -9,7 +9,7 @@
 
 # Daemon runtime files in $PWD
 /t3b.sock
-/t3b.pid
+/*t3b.pid
 
 # Go
 *.test

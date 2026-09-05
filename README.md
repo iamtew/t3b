@@ -66,10 +66,10 @@ Defaults:
 
 | Platform | Control endpoint | Pidfile |
 | -------- | ---------------- | ------- |
-| Unix | `$PWD/t3b.sock` | `$PWD/t3b.pid` |
-| Windows | `\\.\pipe\t3b` | `$PWD/t3b.pid` |
+| Unix | `$PWD/t3b.sock` | `$PWD/t3b.pid` (or `<config-basename>.pid` for non-`t3b.conf`) |
+| Windows | `\\.\pipe\t3b` | `$PWD/t3b.pid` (or `<config-basename>.pid` for non-`t3b.conf`) |
 
-Override under `[runtime]` in the config (`socket_path`, `pid_path`).
+With a non-standard config name (e.g. `bot.t3b.conf`), the default pidfile is `$PWD/bot.t3b.pid`. Override under `[runtime]` (`socket_path`, `pid_path`).
 
 ### Resolvers
 

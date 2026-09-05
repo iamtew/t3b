@@ -35,7 +35,7 @@ password = ""
 [runtime]
 # Empty → platform default: Unix $PWD/t3b.sock , Windows \\.\pipe\t3b
 socket_path = ""
-# Empty → $PWD/t3b.pid
+# Empty → $PWD/t3b.pid for t3b.conf; otherwise <config-basename>.pid (e.g. bot.t3b.conf → bot.t3b.pid)
 pid_path = ""
 
 [resolve]

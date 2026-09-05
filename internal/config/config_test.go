@@ -200,3 +200,37 @@ func validBase() Config {
 	cfg.applyDefaults()
 	return cfg
 }
+
+func TestDefaultPIDPathFor(t *testing.T) {
+	tests := []struct {
+		config string
+		want   string
+	}{
+		{"", DefaultPIDPath},
+		{".", DefaultPIDPath},
+		{DefaultPath, DefaultPIDPath},
+		{"./t3b.conf", DefaultPIDPath},
+		{filepath.Join("dir", "t3b.conf"), DefaultPIDPath},
+		{"bot.t3b.conf", "bot.t3b.pid"},
+		{"foo_t3b.conf", "foo_t3b.pid"},
+		{filepath.Join("elsewhere", "bot.t3b.conf"), "bot.t3b.pid"},
+		{"custom.conf", "custom.pid"},
+	}
+	for _, tt := range tests {
+		got := DefaultPIDPathFor(tt.config)
+		if got != tt.want {
+			t.Errorf("DefaultPIDPathFor(%q) = %q, want %q", tt.config, got, tt.want)
+		}
+	}
+}
+
+func TestPIDPathOrDefault(t *testing.T) {
+	explicit := Runtime{PIDPath: "custom.pid"}
+	if got := explicit.PIDPathOrDefault("bot.t3b.conf"); got != "custom.pid" {
+		t.Fatalf("explicit pid_path: got %q, want custom.pid", got)
+	}
+	empty := Runtime{}
+	if got := empty.PIDPathOrDefault("bot.t3b.conf"); got != "bot.t3b.pid" {
+		t.Fatalf("derived: got %q, want bot.t3b.pid", got)
+	}
+}

@@ -165,7 +165,7 @@ func run(args []string) int {
 	}
 	defer ctrl.Close()
 
-	pidPath := cfg.Runtime.PIDPathOrDefault()
+	pidPath := cfg.Runtime.PIDPathOrDefault(resolved)
 	if err := daemon.WritePID(pidPath); err != nil {
 		fmt.Fprintf(os.Stderr, "t3b: pidfile: %v\n", err)
 		return 1

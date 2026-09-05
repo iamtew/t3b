@@ -223,9 +223,10 @@ func (r Runtime) SocketPathOrDefault() string {
 }
 
 // PIDPathOrDefault returns the pidfile path.
-func (r Runtime) PIDPathOrDefault() string {
+// When pid_path is empty, derives the name from configPath (see DefaultPIDPathFor).
+func (r Runtime) PIDPathOrDefault(configPath string) string {
 	if strings.TrimSpace(r.PIDPath) != "" {
 		return r.PIDPath
 	}
-	return DefaultPIDPath
+	return DefaultPIDPathFor(configPath)
 }
