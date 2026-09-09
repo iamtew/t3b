@@ -79,10 +79,3 @@ func spawnDetached(configPath string) error {
 	}
 	return fmt.Errorf("daemon child did not open control pipe at %s", addr)
 }
-
-func loadRuntimeConfig(configPath string) (*config.Config, error) {
-	if configPath == "" {
-		configPath = config.DefaultPath
-	}
-	return config.Load(configPath)
-}

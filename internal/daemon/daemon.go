@@ -16,14 +16,6 @@ import (
 	"github.com/iamtew/t3b/internal/config"
 )
 
-// Controller is implemented by bot.Bot for IPC handlers.
-type Controller interface {
-	Status() bot.Status
-	Stop() error
-	Restart() error
-	Reload() error
-}
-
 // Request is a newline-delimited JSON control message.
 type Request struct {
 	Cmd string `json:"cmd"`
@@ -110,12 +102,12 @@ func readResponse(r io.Reader) (Response, error) {
 // Server listens for control commands for the life of the process.
 type Server struct {
 	addr string
-	ctrl Controller
+	ctrl *bot.Bot
 	ln   net.Listener
 }
 
 // ListenAndServe binds the control endpoint. Fails clearly if already running.
-func ListenAndServe(cfg *config.Config, ctrl Controller) (*Server, error) {
+func ListenAndServe(cfg *config.Config, ctrl *bot.Bot) (*Server, error) {
 	addr := cfg.Runtime.SocketPathOrDefault()
 	ln, err := Listen(addr)
 	if err != nil {

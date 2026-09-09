@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/url"
@@ -205,7 +206,7 @@ func (r *Reddit) fromOEmbed(ctx context.Context, u *url.URL) (string, bool, erro
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		return "", false, err
 	}
-	title := collapseSpace(htmlUnescape(parsed.Title))
+	title := collapseSpace(html.UnescapeString(parsed.Title))
 	if title == "" {
 		return "", false, nil
 	}

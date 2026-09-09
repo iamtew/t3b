@@ -49,21 +49,9 @@ func (t *Tracker) ShouldOp(channel, nick, mask string) bool {
 	return true
 }
 
-// ShouldOpNick is for cases where we only have nick+mask (JOIN).
-func (t *Tracker) ShouldOpNick(channel, nick, mask string) bool {
-	return t.ShouldOp(channel, nick, mask)
-}
-
 // IsPrivileged reports owner/admin without debounce (for scans).
 func (t *Tracker) IsPrivileged(mask string) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.auth.IsOwnerOrAdmin(mask)
-}
-
-// NoteOp records that we just opped nick on channel (starts debounce).
-func (t *Tracker) NoteOp(channel, nick string) {
-	t.mu.Lock()
-	t.last[channel+"\x00"+nick] = time.Now()
-	t.mu.Unlock()
 }

@@ -3,17 +3,15 @@ package resolve
 import (
 	"context"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
 	"unicode/utf8"
 )
 
 const maxBody = 1 << 20 // 1 MiB
-
-var titleRe = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
 
 // URLTitle fetches HTML and extracts <title>.
 type URLTitle struct {
@@ -63,12 +61,22 @@ func (u *URLTitle) Resolve(ctx context.Context, raw *url.URL) (string, bool, err
 	return fmt.Sprintf("Title: %s", title), true, nil
 }
 
-func extractTitle(html string) string {
-	m := titleRe.FindStringSubmatch(html)
-	if len(m) < 2 {
+func extractTitle(raw string) string {
+	lower := strings.ToLower(raw)
+	start := strings.Index(lower, "<title")
+	if start < 0 {
 		return ""
 	}
-	t := collapseSpace(htmlUnescape(m[1]))
+	tagEnd := strings.Index(lower[start:], ">")
+	if tagEnd < 0 {
+		return ""
+	}
+	contentStart := start + tagEnd + 1
+	endRel := strings.Index(lower[contentStart:], "</title>")
+	if endRel < 0 {
+		return ""
+	}
+	t := collapseSpace(html.UnescapeString(raw[contentStart : contentStart+endRel]))
 	if !utf8.ValidString(t) {
 		t = strings.ToValidUTF8(t, "")
 	}
@@ -77,17 +85,4 @@ func extractTitle(html string) string {
 
 func collapseSpace(s string) string {
 	return strings.Join(strings.Fields(s), " ")
-}
-
-func htmlUnescape(s string) string {
-	replacer := strings.NewReplacer(
-		"&amp;", "&",
-		"&lt;", "<",
-		"&gt;", ">",
-		"&quot;", `"`,
-		"&#39;", "'",
-		"&apos;", "'",
-		"&nbsp;", " ",
-	)
-	return replacer.Replace(s)
 }
