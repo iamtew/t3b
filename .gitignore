@@ -11,6 +11,7 @@
 /t3b.sock
 /*t3b.pid
 /links-*.log
+/karma-*.db
 
 # Go
 *.test

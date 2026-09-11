@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/iamtew/t3b/internal/auth"
@@ -37,7 +38,7 @@ func TestAllowedRoles(t *testing.T) {
 }
 
 func TestIsPublic(t *testing.T) {
-	if !IsPublic("link") || !IsPublic("l") || !IsPublic("more") || !IsPublic("m") {
+	if !IsPublic("link") || !IsPublic("l") || !IsPublic("more") || !IsPublic("m") || !IsPublic("karma") {
 		t.Fatal("expected public aliases")
 	}
 	if IsPublic("join") || IsPublic("stop") || IsPublic("nope") {
@@ -49,12 +50,13 @@ type stubIRC struct {
 	joined, left, said           string
 	stopped, restarted, reloaded bool
 
-	stats   linklog.Stats
-	byID    map[int]linklog.Entry
-	last    []linklog.Entry
-	search  []linklog.Entry
-	pages   map[string]*pageStub
-	started []linklog.Entry
+	stats       linklog.Stats
+	byID        map[int]linklog.Entry
+	last        []linklog.Entry
+	search      []linklog.Entry
+	pages       map[string]*pageStub
+	started     []linklog.Entry
+	karmaScores map[string]int
 }
 
 type pageStub struct {
@@ -111,6 +113,14 @@ func (s *stubIRC) LinkMore(nick string) []string {
 		delete(s.pages, nick)
 	}
 	return lines
+}
+
+func (s *stubIRC) KarmaGet(phrase string) (int, bool, error) {
+	if s.karmaScores == nil {
+		return 0, false, nil
+	}
+	score, ok := s.karmaScores[phrase]
+	return score, ok, nil
 }
 
 func TestDispatchJoinAndStop(t *testing.T) {
@@ -180,5 +190,23 @@ func TestDispatchLinkAliasesAndPagination(t *testing.T) {
 	lines, err = Dispatch(h, "rando!~r@x", "rando", ".link last 2", irc)
 	if err != nil || len(irc.started) != 2 {
 		t.Fatalf(".link last 2: started=%d lines=%v", len(irc.started), lines)
+	}
+}
+
+func TestDispatchKarma(t *testing.T) {
+	h := auth.New("owner!~o@h", nil)
+	irc := &stubIRC{karmaScores: map[string]int{"foo bar": 5}}
+
+	lines, err := Dispatch(h, "rando!~r@x", "rando", ".karma", irc)
+	if err != nil || len(lines) != 1 || !strings.Contains(lines[0], "phrase++") {
+		t.Fatalf("help: %v err=%v", lines, err)
+	}
+	lines, err = Dispatch(h, "rando!~r@x", "rando", ".karma foo bar", irc)
+	if err != nil || len(lines) != 1 || lines[0] != "foo bar: 5" {
+		t.Fatalf("lookup: %v err=%v", lines, err)
+	}
+	lines, err = Dispatch(h, "rando!~r@x", "rando", ".karma missing", irc)
+	if err != nil || lines[0] != "missing: 0 (unknown)" {
+		t.Fatalf("missing: %v", lines)
 	}
 }

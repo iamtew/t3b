@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/iamtew/t3b/internal/auth"
+	"github.com/iamtew/t3b/internal/karma"
 	"github.com/iamtew/t3b/internal/linklog"
 )
 
@@ -39,6 +40,9 @@ type IRC interface {
 	LinkSearch(q string) ([]linklog.Entry, error)
 	LinkStartPage(nick string, entries []linklog.Entry) []string
 	LinkMore(nick string) []string
+
+	// Karma (public .karma).
+	KarmaGet(phrase string) (score int, found bool, err error)
 }
 
 // Parse splits ".cmd args..." — name is lowercased. ok=false if not a command.
@@ -58,7 +62,7 @@ func Parse(text string) (name string, args []string, ok bool) {
 // RequiredRole returns the minimum role for a known command, or false if unknown.
 func RequiredRole(name string) (Role, bool) {
 	switch name {
-	case "link", "l", "more", "m":
+	case "link", "l", "more", "m", "karma":
 		return RolePublic, true
 	case "join", "leave", "op", "deop", "status", "say", "help":
 		return RoleAdmin, true
@@ -179,9 +183,26 @@ func Dispatch(h auth.Hostmasks, mask, nick, text string, irc IRC) (lines []strin
 			return []string{"no more results"}, nil
 		}
 		return out, nil
+	case "karma":
+		return dispatchKarma(args, irc)
 	default:
 		return []string{"unknown command — try .help"}, nil
 	}
+}
+
+func dispatchKarma(args []string, irc IRC) ([]string, error) {
+	if len(args) == 0 {
+		return []string{karma.HelpText()}, nil
+	}
+	phrase := strings.Join(args, " ")
+	score, found, err := irc.KarmaGet(phrase)
+	if err != nil {
+		return []string{"karma unavailable: " + err.Error()}, nil
+	}
+	if !found {
+		return []string{fmt.Sprintf("%s: 0 (unknown)", phrase)}, nil
+	}
+	return []string{fmt.Sprintf("%s: %d", phrase, score)}, nil
 }
 
 func dispatchLink(nick string, args []string, irc IRC) ([]string, error) {
@@ -244,7 +265,7 @@ func dispatchLink(nick string, args []string, irc IRC) ([]string, error) {
 }
 
 func helpText(h auth.Hostmasks, mask string) string {
-	parts := []string{".help", ".status", ".join", ".leave", ".op", ".deop", ".say", ".link", ".more"}
+	parts := []string{".help", ".status", ".join", ".leave", ".op", ".deop", ".say", ".link", ".more", ".karma"}
 	if h.IsOwner(mask) {
 		parts = append(parts, ".nick", ".stop", ".restart", ".reload")
 	}

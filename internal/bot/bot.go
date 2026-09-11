@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/iamtew/t3b/internal/automode"
 	"github.com/iamtew/t3b/internal/commands"
 	"github.com/iamtew/t3b/internal/config"
+	"github.com/iamtew/t3b/internal/karma"
 	"github.com/iamtew/t3b/internal/linklog"
 	"github.com/iamtew/t3b/internal/resolve"
 	"github.com/iamtew/t3b/internal/version"
@@ -53,6 +55,7 @@ type Bot struct {
 	auto   *automode.Tracker
 	engine *resolve.Engine
 	links  *linklog.Store
+	karma  *karma.Store
 
 	// Per-nick .more pagination for public link search.
 	pageMu sync.Mutex
@@ -93,6 +96,7 @@ func New(cfg *config.Config, opts Options) *Bot {
 		pages:      make(map[string]*pageSession),
 	}
 	b.openLinkLog(cfg)
+	b.openKarma(cfg)
 	return b
 }
 
@@ -116,6 +120,28 @@ func (b *Bot) openLinkLog(cfg *config.Config) {
 		_ = old.Close()
 	}
 	b.log.Printf("linklog %s", filepath.Base(logPath))
+}
+
+// openKarma opens (or reopens) the SQLite karma DB beside the config file.
+func (b *Bot) openKarma(cfg *config.Config) {
+	path := b.configPath
+	if path == "" {
+		path = config.DefaultPath
+	}
+	dbPath := karma.PathFor(path, cfg.Identity.Nick, cfg.Server.Host)
+	store, err := karma.Open(dbPath)
+	if err != nil {
+		b.log.Printf("karma open %s: %v", dbPath, err)
+		return
+	}
+	b.mu.Lock()
+	old := b.karma
+	b.karma = store
+	b.mu.Unlock()
+	if old != nil {
+		_ = old.Close()
+	}
+	b.log.Printf("karma %s", filepath.Base(dbPath))
 }
 
 // Auth exposes hostmask helpers.
@@ -332,9 +358,13 @@ func (b *Bot) registerHandlers(client *girc.Client) {
 }
 
 func (b *Bot) handleChannelPRIVMSG(c *girc.Client, channel, nick, mask, text string) {
-	// Public .link / .more in-channel; never run admin/owner cmds here.
+	// Public .link / .more / .karma in-channel; never run admin/owner cmds here.
 	if name, _, ok := commands.Parse(text); ok && commands.IsPublic(name) {
 		b.dispatchCommand(c, channel, mask, nick, text)
+		return
+	}
+
+	if b.handleKarma(c, channel, nick, text) {
 		return
 	}
 
@@ -356,6 +386,59 @@ func (b *Bot) handleChannelPRIVMSG(c *girc.Client, channel, nick, mask, text str
 		}
 	}
 	b.sendPRIVMSG(c, channel, reply)
+}
+
+// handleKarma applies ++/--/+d/+N..M bumps. Returns true when the line was karma syntax
+// (so URL resolve should not also run).
+func (b *Bot) handleKarma(c *girc.Client, channel, nick, text string) bool {
+	bump, ok := karma.ParseBump(text)
+	if !ok {
+		return false
+	}
+
+	b.mu.Lock()
+	store := b.karma
+	botNick := b.cfg.Identity.Nick
+	if c != nil {
+		if n := c.GetNick(); n != "" {
+			botNick = n
+		}
+	}
+	b.mu.Unlock()
+	if store == nil {
+		b.log.Printf("karma: store not open")
+		return true
+	}
+
+	if bump.Reject != "" {
+		b.sendPRIVMSG(c, channel, bump.Reject)
+		return true
+	}
+
+	from, to, err := store.Add(bump.Phrase, bump.Delta)
+	if err != nil {
+		b.log.Printf("karma add: %v", err)
+		return true
+	}
+	if line := karma.AdjustReply(bump.Mode, bump.Result, from, to); line != "" {
+		b.sendPRIVMSG(c, channel, line)
+	}
+
+	// Bot-nick bump: thank the Meat Bag, then self-boost with a real random 2..20
+	// (Add directly — do not re-enter ParseBump / handleKarma).
+	if strings.EqualFold(strings.TrimSpace(bump.Phrase), botNick) {
+		b.sendPRIVMSG(c, channel, fmt.Sprintf(
+			"fuck yeah, I'm awesome! thank you %s! let's boost myself a bit more....", nick))
+		b.sendPRIVMSG(c, channel, botNick+"+2..20")
+		selfResult := 2 + rand.IntN(19) // 2..20 inclusive
+		selfFrom, selfTo, err := store.Add(bump.Phrase, selfResult)
+		if err != nil {
+			b.log.Printf("karma self-boost: %v", err)
+			return true
+		}
+		b.sendPRIVMSG(c, channel, karma.AdjustReply(karma.ModeRandom, selfResult, selfFrom, selfTo))
+	}
+	return true
 }
 
 // dispatchCommand runs commands.Dispatch and sends each reply line to target.
@@ -549,11 +632,16 @@ func (b *Bot) Reload() error {
 	client := b.client
 	b.mu.Unlock()
 
-	// Reopen link log if nick/host (or path) would change the filename.
-	oldPath := linklog.PathFor(path, old.Identity.Nick, old.Server.Host)
-	newPath := linklog.PathFor(path, neu.Identity.Nick, neu.Server.Host)
-	if oldPath != newPath {
+	// Reopen link log / karma DB if nick/host (or path) would change the filename.
+	oldLink := linklog.PathFor(path, old.Identity.Nick, old.Server.Host)
+	newLink := linklog.PathFor(path, neu.Identity.Nick, neu.Server.Host)
+	if oldLink != newLink {
 		b.openLinkLog(neu)
+	}
+	oldKarma := karma.PathFor(path, old.Identity.Nick, old.Server.Host)
+	newKarma := karma.PathFor(path, neu.Identity.Nick, neu.Server.Host)
+	if oldKarma != newKarma {
+		b.openKarma(neu)
 	}
 
 	if needReconnect {
@@ -698,6 +786,17 @@ func (b *Bot) LinkMore(nick string) []string {
 	}
 	b.pageMu.Unlock()
 	return lines
+}
+
+// KarmaGet implements commands.IRC.
+func (b *Bot) KarmaGet(phrase string) (score int, found bool, err error) {
+	b.mu.Lock()
+	store := b.karma
+	b.mu.Unlock()
+	if store == nil {
+		return 0, false, fmt.Errorf("not open")
+	}
+	return store.Get(phrase)
 }
 
 func appendUnique(list []string, ch string) []string {

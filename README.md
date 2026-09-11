@@ -23,6 +23,7 @@ IRC bot written in Go. Built with Clankers; operated by Meat Bags.
 - Reddit: Arctic Shift archive + oEmbed fallback (title, subreddit, author, score, date, comments when available)
 - Link log: every successfully resolved URL is appended as JSONL beside the config file (`links-{identity.nick}-{server.host}.log`)
 - Public channel (and DM) link search: `.link` / `.l`, pagination with `.more` / `.m` — no ACL
+- Karma: `phrase++` / `phrase--` (silent ±1), `+d`/`-d` dice, `+N..M`/`-N..M` random (max 23); SQLite beside config; `.karma` lookup
 - Automode: while the bot is op, keep owner and admins opped
 - Config and behavior commands in a **direct message** to the bot (admin/owner only; not in channel)
 - Admin: `.join #channel`, `.leave #channel`, `.op nick #channel`, `.deop nick #channel`
@@ -100,6 +101,20 @@ Anyone may run these in a channel or in a DM (replies go where the command was s
 | `.more` / `.m` | Next page of 3 after search/last |
 
 When a search or `last` returns more than 3 hits, t3b prints three lines plus `Showing X-Y of Z. Send .more or .m for next.`
+
+### Karma
+
+Channel messages (not DMs) that start with a phrase ending in a karma operator update a score in `karma-{nick}-{host}.db` next to the config file:
+
+| Trigger | Effect |
+| -------- | ------ |
+| `phrase++` / `phrase--` | ±1, silent (no channel reply) |
+| `phrase+d` / `phrase-d` | ± dice 1–6; announces roll and `from -> to` |
+| `phrase+N..M` / `phrase-N..M` | ± random in `[N,M]`; announces roll and `from -> to`; rejects if either bound > 23 |
+
+Phrase is everything from the start of the line up to the operator (spaces kept). Text after the operator is ignored for the key.
+
+Anyone may run `.karma` / `.karma <phrase>` in a channel or DM (exact lookup; bare `.karma` prints a short usage line).
 
 ### Privileged DM commands
 
