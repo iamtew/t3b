@@ -137,6 +137,47 @@ func TestTwitterResolveFixture(t *testing.T) {
 	}
 }
 
+func TestBlueskyMatch(t *testing.T) {
+	b := &Bluesky{}
+	u, _ := url.Parse("https://bsky.app/profile/alice.bsky.social/post/3mgif3pvge22f")
+	if !b.Match(u) {
+		t.Fatal("expected match")
+	}
+	u2, _ := url.Parse("https://bsky.app/profile/alice.bsky.social")
+	if b.Match(u2) {
+		t.Fatal("should not match profile-only")
+	}
+	u3, _ := url.Parse("https://example.com/profile/x/post/1")
+	if b.Match(u3) {
+		t.Fatal("should not match other hosts")
+	}
+}
+
+func TestBlueskyResolveFixture(t *testing.T) {
+	const fixture = `{"thread":{"$type":"app.bsky.feed.defs#threadViewPost","post":{"author":{"handle":"alice.bsky.social"},"record":{"text":"hello sky","createdAt":"2026-03-07T17:47:27.943Z"},"replyCount":1,"repostCount":2,"likeCount":3,"embed":{"$type":"app.bsky.embed.images#view","images":[{"fullsize":"https://cdn.example/p.jpg"}]}}}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.Path, "app.bsky.feed.getPostThread") {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(fixture))
+	}))
+	defer srv.Close()
+
+	b := &Bluesky{
+		ua: "t3b-test",
+		client: &http.Client{
+			Timeout:   5 * time.Second,
+			Transport: rewriteToTestServer(srv),
+		},
+	}
+	post, _ := url.Parse("https://bsky.app/profile/alice.bsky.social/post/3mgif3pvge22f")
+	reply, ok, err := b.Resolve(context.Background(), post)
+	if err != nil || !ok || !strings.Contains(reply, "@alice.bsky.social") || !strings.Contains(reply, "likes:3") || !strings.Contains(reply, "media:") {
+		t.Fatalf("reply=%q ok=%v err=%v", reply, ok, err)
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

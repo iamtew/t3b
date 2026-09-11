@@ -54,8 +54,8 @@ func TestCheckMissingKeys(t *testing.T) {
 	if !rep.Valid {
 		t.Fatalf("expected valid conf, got %s", rep.LoadErr)
 	}
-	if !containsAll(rep.Missing, "resolve.reddit", "automode.enabled") {
-		t.Fatalf("missing=%v want resolve.reddit and automode.enabled", rep.Missing)
+	if !containsAll(rep.Missing, "resolve.bluesky", "resolve.reddit", "automode.enabled") {
+		t.Fatalf("missing=%v want resolve.bluesky, resolve.reddit and automode.enabled", rep.Missing)
 	}
 	if rep.OK() {
 		t.Fatal("OK should be false when keys are missing")
@@ -145,6 +145,7 @@ pid_path = ""
 [resolve]
 url_titles = true
 twitter = true
+bluesky = true
 youtube = true
 reddit = true
 http_timeout_sec = 8

@@ -1,4 +1,4 @@
-// Package resolve fetches titles / tweet / YouTube / Reddit metadata for channel URLs.
+// Package resolve fetches titles / tweet / Bluesky / YouTube / Reddit metadata for channel URLs.
 package resolve
 
 import (
@@ -85,6 +85,9 @@ func (e *Engine) rebuildLocked() {
 	// Order: specialised handlers before generic title so they win on their hosts.
 	if e.cfg.TwitterOn() {
 		e.resolvers = append(e.resolvers, &Twitter{client: e.client, ua: e.cfg.UserAgent})
+	}
+	if e.cfg.BlueskyOn() {
+		e.resolvers = append(e.resolvers, &Bluesky{client: e.client, ua: e.cfg.UserAgent})
 	}
 	// YouTube Data API only when a key is set; otherwise URLTitle handles the link.
 	if e.cfg.YouTubeOn() {

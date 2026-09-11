@@ -42,6 +42,7 @@ pid_path = ""
 [resolve]
 url_titles = true
 twitter = true
+bluesky = true
 youtube = true
 reddit = true
 # Data API v3 key (YouTube Data API). Empty → YouTube links get a plain page title.

@@ -59,6 +59,7 @@ type Runtime struct {
 type Resolve struct {
 	URLTitles      *bool  `toml:"url_titles"`
 	Twitter        *bool  `toml:"twitter"`
+	Bluesky        *bool  `toml:"bluesky"`
 	YouTube        *bool  `toml:"youtube"`
 	YouTubeAPIKey  string `toml:"youtube_api_key"` // Data API v3; empty → generic URL title
 	Reddit         *bool  `toml:"reddit"`
@@ -109,6 +110,9 @@ func (c *Config) applyDefaults() {
 	if c.Resolve.Twitter == nil {
 		c.Resolve.Twitter = boolPtr(true)
 	}
+	if c.Resolve.Bluesky == nil {
+		c.Resolve.Bluesky = boolPtr(true)
+	}
 	if c.Resolve.YouTube == nil {
 		c.Resolve.YouTube = boolPtr(true)
 	}
@@ -133,6 +137,9 @@ func (r Resolve) URLTitlesOn() bool { return r.URLTitles == nil || *r.URLTitles 
 
 // TwitterOn reports whether Twitter/X resolution is enabled.
 func (r Resolve) TwitterOn() bool { return r.Twitter == nil || *r.Twitter }
+
+// BlueskyOn reports whether Bluesky post resolution is enabled.
+func (r Resolve) BlueskyOn() bool { return r.Bluesky == nil || *r.Bluesky }
 
 // YouTubeOn reports whether YouTube resolution is enabled.
 func (r Resolve) YouTubeOn() bool { return r.YouTube == nil || *r.YouTube }

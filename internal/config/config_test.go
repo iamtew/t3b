@@ -117,6 +117,7 @@ realname = "bot"
 [resolve]
 url_titles = false
 twitter = false
+bluesky = false
 youtube = false
 reddit = false
 
@@ -130,7 +131,7 @@ enabled = false
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Resolve.URLTitlesOn() || cfg.Resolve.TwitterOn() || cfg.Resolve.YouTubeOn() || cfg.Resolve.RedditOn() {
+	if cfg.Resolve.URLTitlesOn() || cfg.Resolve.TwitterOn() || cfg.Resolve.BlueskyOn() || cfg.Resolve.YouTubeOn() || cfg.Resolve.RedditOn() {
 		t.Fatal("expected resolve toggles off")
 	}
 	if cfg.Automode.AutomodeOn() {
