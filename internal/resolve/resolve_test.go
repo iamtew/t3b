@@ -82,6 +82,41 @@ func TestURLTitleNon2xx(t *testing.T) {
 	}
 }
 
+// Consent walls return 200 with a gate <title>; retry with link-preview UA.
+func TestURLTitleConsentRetry(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if strings.Contains(r.Header.Get("User-Agent"), "facebookexternalhit") {
+			_, _ = w.Write([]byte(`<html><head><title>Real Article Title</title></head></html>`))
+			return
+		}
+		_, _ = w.Write([]byte(`<html><head><title>DPG Media Privacy Gate</title></head></html>`))
+	}))
+	defer srv.Close()
+
+	u, _ := url.Parse(srv.URL)
+	r := &URLTitle{client: srv.Client(), ua: "t3b-test"}
+	reply, ok, err := r.Resolve(context.Background(), u)
+	if err != nil || !ok || !strings.Contains(reply, "Real Article Title") {
+		t.Fatalf("reply=%q ok=%v err=%v", reply, ok, err)
+	}
+}
+
+func TestURLTitleConsentBothSkip(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(`<html><head><title>DPG Media Privacy Gate</title></head></html>`))
+	}))
+	defer srv.Close()
+
+	u, _ := url.Parse(srv.URL)
+	r := &URLTitle{client: srv.Client(), ua: "t3b-test"}
+	reply, ok, err := r.Resolve(context.Background(), u)
+	if err != nil || ok || reply != "" {
+		t.Fatalf("expected skip, got reply=%q ok=%v err=%v", reply, ok, err)
+	}
+}
+
 func TestTwitterMatch(t *testing.T) {
 	tr := &Twitter{}
 	u, _ := url.Parse("https://x.com/someone/status/1234567890")
